@@ -1,7 +1,3 @@
-extern crate palette;
-use palette::{Hsv, IntoColor};
-use palette::rgb::{Linear, Rgb};
-
 use std::fmt::Debug;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
@@ -41,10 +37,7 @@ impl Generator{
 		self.angle_to_color(get_angle(seed))
 	}
 	fn angle_to_color(&self, seed: f32) -> Color{
-		let c = Hsv::new(palette::RgbHue::from_radians(2.*3.14159*(seed as f32)) , self.sat, self.val);
-		let r: Rgb<Linear> = c.into_rgb();
-		(r.red, r.green, r.blue)
-		// hsv_to_rgb(360.*(seed as f32) , self.sat, self.val)
+		hsv_to_rgb(360.*(seed as f32) , self.sat, self.val)
 	}
 }
 
@@ -52,7 +45,7 @@ impl Iterator for Generator {
 	type Item = Color;
     fn next(&mut self) -> Option<Color> {
         let c = self.angle_to_color(self.theta as f32);
-        self.theta += (self.theta + GOLDEN_RATIO_CONJUGATE) % 1.;
+        self.theta = (self.theta + GOLDEN_RATIO_CONJUGATE) % 1.;
         return Some(c);
     }
 }

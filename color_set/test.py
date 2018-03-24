@@ -24,7 +24,7 @@ def hsvToRGB(h, s, v):
     }[hi]
 
 
-theta = uniform(0,1)
+theta = .531#uniform(0,1)
 def next():
     # use golden ratio
     global theta
