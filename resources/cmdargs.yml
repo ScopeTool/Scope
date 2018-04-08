@@ -1,0 +1,16 @@
+name: Scope
+version: "0.0.1"
+author: Soren R. <sorenrade@gmail.com>
+about: Graphs signals received on standard input
+args:
+    - capture:
+        short: c
+        long: capture
+        help: List signal names to capture separated by spaces
+        value_delimiter: " "
+        conflicts_with: pass
+    - pass:
+        short: p
+        long: pass
+        help: List signal names to pass on to stdout separated by spaces, note, passed signals will still be plotted
+        value_delimiter: " "

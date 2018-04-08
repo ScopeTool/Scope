@@ -1,4 +1,6 @@
-
+*.kra
+*.kra~
+*.jpg
 */target/
 /target/debug/
 **/*.rs.bk

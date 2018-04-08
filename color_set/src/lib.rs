@@ -1,3 +1,5 @@
+//TODO: implement triad mixing and publish separately http://devmag.org.za/2012/07/29/how-to-choose-colours-procedurally-algorithms/ 
+
 use std::fmt::Debug;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
@@ -6,7 +8,7 @@ pub type Color = (f32, f32, f32);
 
 const GOLDEN_RATIO_CONJUGATE: f64 = 0.618033988749895;
 #[derive(Debug)]
-struct Generator {
+pub struct Generator {
     theta: f64,
     pub sat: f32,
     pub val: f32
@@ -33,18 +35,18 @@ impl Generator{
 	    g.theta = get_angle(seed) as f64;
 	    g
 	}
-	pub fn get_color<T: Debug>(&self, seed: T) -> Color{
-		self.angle_to_color(get_angle(seed))
+	pub fn get_color<T: Debug>(seed: T, saturation: f32, value: f32) -> Color{
+		Generator::angle_to_color(get_angle(seed), saturation, value)
 	}
-	fn angle_to_color(&self, seed: f32) -> Color{
-		hsv_to_rgb(360.*(seed as f32) , self.sat, self.val)
+	fn angle_to_color(seed: f32, saturation: f32, value: f32) -> Color{
+		hsv_to_rgb(360.*(seed as f32) , saturation, value)
 	}
 }
 
 impl Iterator for Generator {
 	type Item = Color;
     fn next(&mut self) -> Option<Color> {
-        let c = self.angle_to_color(self.theta as f32);
+        let c = Generator::angle_to_color(self.theta as f32, self.sat, self.val);
         self.theta = (self.theta + GOLDEN_RATIO_CONJUGATE) % 1.;
         return Some(c);
     }
@@ -76,7 +78,7 @@ mod tests {
         for i in Generator::new_seed(0).take(100){
         	println!("{:?}", i);
         }
-        println!("What color is this sentence? Its: {:?}", Generator::new().get_color("What color is this sentence?"));
+        println!("What color is this sentence? Its: {:?}", Generator::get_color("What color is this sentence?", 0.9, 0.9));
         assert!(true);
     }
 }
