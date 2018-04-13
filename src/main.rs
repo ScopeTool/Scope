@@ -11,6 +11,7 @@ use glium::Surface;
 use channel::{Receiver, Sender, TryRecvError};
 
 use std::time;
+use std::f64::NAN;
 use time::{Duration, Instant};
 // use std::rc::Rc;
 
@@ -19,8 +20,9 @@ use regex::{Regex, RegexSet, Captures};
 use clap::{App};
 
 pub mod signal;
+pub mod drawstyles;
 // pub use self::signal;
-use signal::MsgPoint as Point;
+use signal::{MsgPoint as Point, PointType};
 use signal::SignalManager;
 
 
@@ -211,10 +213,10 @@ fn handle_caps(caps: Option<Captures>, timestamp: f64, settings: &ReaderSettings
 		}).collect();
 
 	return Some(match v.len(){
-		1 => Point::D1(name, timestamp, v[0]),
-		2 => Point::D2(name, timestamp, v[0], v[1]),
-		3 => Point::D3(name, timestamp, v[0], v[1], v[2]),
-		_ => Point::BreakPoint(name, timestamp)
+		1 => Point{name, timestamp, ty:PointType::D1, x:v[0], y:NAN, z:NAN},
+		2 => Point{name, timestamp, ty:PointType::D2, x:v[0], y:v[1], z:NAN},
+		3 => Point{name, timestamp, ty:PointType::D3, x:v[0], y:v[1], z:v[2]},
+		_ => Point{name, timestamp, ty:PointType::BreakPoint, x:NAN, y:NAN, z:NAN},
 	});
 }
 
