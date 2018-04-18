@@ -87,7 +87,7 @@ impl std::ops::Index<usize> for D3 {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Point<A>{
     pub time: f64,
     pub axes: A
@@ -123,13 +123,21 @@ impl <A> RangedDeque<A> where
 		RangedDeque{points: std::collections::VecDeque::new(),
 	   				range: Range{min: A::default().as_vec(), max: A::default().as_vec()}}
 	}
-	fn push(&mut self, pt: Point<A>){
+	fn push(&mut self, pt: Point<A>) -> bool{
 		//TODO: recompupte range
+		let mut range_update = false;
 		for i in 0..A::size(){
-			self.range.min[i] = pt.axes[i].clone().into().min(self.range.min[i]);
-			self.range.max[i] = pt.axes[i].clone().into().max(self.range.max[i]);
+			let t = pt.axes[i].clone().into();
+			if self.range.min[i] < t{ 
+				self.range.min[i] = t;
+				range_update = true;
+			} else if self.range.max[i] > t{
+				self.range.max[i] = t;
+				range_update = true;
+			}
 		}
 		self.points.push_back(pt);
+		return range_update;
 	}
 	pub fn get_last(&self) -> Option<&Point<A>>{
 		self.points.back()
@@ -169,11 +177,15 @@ impl <'a, T> Signal<'a, T>
 	}
 	fn push(&mut self, pt: Point<T>){
 		// Do unit scaling here before pass to drawstyle
-		self.style.push(&pt, &self.color, &self.points, self.display); // This order is critical bc the way chunks are linked in push_vbos
-		self.points.push(pt);
+		self.points.push(pt.clone());
+		self.style.push(&pt, &self.color, &self.points, self.display);
 	}
 	fn _draw(&self, target: &mut glium::Frame){
-		self.style.draw(target);
+		let trans = Transform{
+			dx: 0.0, dy: 0.0,
+			sx: 1.0, sy: 1.0, sz: 1.0
+		};
+		self.style.draw(&trans, target);
 	}
 }
 
@@ -195,10 +207,6 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 
 
 pub struct SignalManager<'a> {
-	// signals_d1: HashMap<String, Signal<'a, D1>>,
-	// signals_d2: HashMap<String, Signal<'a, D2>>,
-	// signals_d3: HashMap<String, Signal<'a, D3>>,
-
 	signals: HashMap<String, Box<GenericSignal+'a>>,
 
 	display: &'a glium::Display
@@ -246,37 +254,7 @@ impl <'a> SignalManager<'a>{
 		}
 	}
 
-	// pub fn add_point(&mut self, point: MsgPoint){
-	// 	// match point {
-	// 	//     MsgPoint::D1(name, time, x) => {SignalManager::_add_point(self.display, &mut self.signals_d1, name, Point::new(time, [x]))},
-	// 	//     MsgPoint::D2(name, time, x, y) => {SignalManager::_add_point(self.display, &mut self.signals_d2, name, Point::new(time, [x, y]))},
-	// 	//     MsgPoint::D3(name, time, x, y, z) => {SignalManager::_add_point(self.display, &mut self.signals_d3, name, Point::new(time, [x, y, z]))},
-	// 	//     MsgPoint::BreakPoint(ref _name, _time) => {}//{SignalManager::_add_point(&mut self.signalsD3, name, Point::new(time, [x, y, z]))},
-	// 	// }
-	// }
-
-	// pub fn _add_point(display: &'a glium::Display, name: String, point: Point<T>){
-	// }
-
-	// // fn _add_point<T: Axes<T> + Clone>(display: &'a glium::Display, hm: &mut HashMap<String, Signal<'a, T>>, name: String, point: Point<T>){
-	// // 	// match hm.entry(name.clone()){
-	// // 	// 	std::collections::hash_map::Entry::Occupied(mut val) => {
-	// // 	// 		let mut ch = val.get_mut();
-	// // 	// 		ch.push(point);
-	// // 	// 	},
-	// // 	// 	std::collections::hash_map::Entry::Vacant(val) => {
-	// // 	// 		let mut ch = Signal::new(name.clone(), Box::new(Scatter::new(display)), display);
-	// // 	// 		println!("New Signal: {:?}", name);
-	// // 	// 		ch.push(point);
-	// // 	// 		val.insert(ch);
-	// // 	// 	}
-	// // 	// }
-	// // }
-
 	pub fn draw_signals(&self, target: &mut glium::Frame){
-		// for (_name, sig) in self.signals_d1.iter(){sig.draw(target);}
-		// for (_name, sig) in self.signals_d2.iter(){sig.draw(target);}
-		// for (_name, sig) in self.signals_d3.iter(){sig.draw(target);}
 		for (_name, sig) in self.signals.iter(){
 			sig.draw(target);
 		}

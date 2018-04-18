@@ -143,9 +143,9 @@ struct ReaderSettings {
 
 fn read_thread_main(rx_stdin: &Receiver<(Duration, String)>, send_points: &Sender<Point>, settings: &ReaderSettings) {
 	let deci: &'static str =  r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?";
-	let one = &format!("~\\.(.+)@({})",deci);
-	let two = &format!("~\\.(.+)@({}),({})", deci, deci);
-	let three = &format!("~\\.(.+)@({}),({}),({})", deci, deci, deci);
+	let one = &format!("~\\.(.+)@\\s*({})",deci);
+	let two = &format!("~\\.(.+)@\\s*({})\\s*,\\s*({})", deci, deci);
+	let three = &format!("~\\.(.+)@\\s*({})\\s*,\\s*({})\\s*,\\s*({})", deci, deci, deci);
 	let list = &format!(r"~#(.+)#(?:(\d+),(\d+))?@((?:(?:{})|,|\(|\)|\s)+)", deci); //Untested
 	let node = r"~%(.+)@(\d+)\[((?:\d+|,|\s)*)\]"; //Untested
 	let set = RegexSet::new(&[
@@ -209,7 +209,7 @@ fn handle_caps(caps: Option<Captures>, timestamp: f64, settings: &ReaderSettings
 
 	//convert remaining values to floats
 	let v: Vec<f64> = c.map(|m| {
-			m.map_or(0.0, |m| m.as_str().parse::<f64>().unwrap_or(0.0))
+			m.map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()) //TODO: should fail gracefully here, set channel health to bad
 		}).collect();
 
 	return Some(match v.len(){
