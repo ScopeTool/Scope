@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate glium;
-extern crate glium_text_rusttype as glium_text;
 extern crate regex;
 #[macro_use]
 extern crate clap;
@@ -21,9 +20,12 @@ use clap::{App};
 
 pub mod signal;
 pub mod drawstyles;
-// pub use self::signal;
+pub mod ui;
+
 use signal::{MsgPoint as Point, PointType};
 use signal::SignalManager;
+
+use ui::UI;
 
 
 
@@ -32,22 +34,23 @@ fn duration2us(dur: &Duration) -> f64 {
 }
 
 
-
 fn main(){
 	//Mark the start of the program
 	let epoch = Instant::now();
 	//Start a thread to begin polling standard input for new data, any new lines are timestamped and passed along the parsing thread
-	let (send_stdin, rx_stdin): (Sender<(Duration, String)>, Receiver<(Duration, String)>) = channel::unbounded();
-	std::thread::spawn(move||{
+	let (send_stdin, rx_stdin): (Sender<(Duration, String, usize)>, Receiver<(Duration, String, usize)>) = channel::unbounded();
+	let _read_thread = std::thread::spawn(move||{
+		let mut line_number = 0;
 		let mut buffer = String::new();
 		loop {
 			match io::stdin().read_line(&mut buffer){
 				Ok(0) => break, // EOF Reached
 				Ok(_n) => { // Received n bytes
-							match send_stdin.send((epoch.elapsed(), buffer.clone())){
-								Err(_) => println!("{:?}", "Buffer Error"), // Error on channel
+							match send_stdin.send((epoch.elapsed(), buffer.clone(), line_number)){
+								Err(e) => println!("{:?}", e), // Error on channel
 								_ => {}
 							}
+							line_number+=1;
 						}
 				Err(error) => println!("{:?}", error)
 			}
@@ -63,56 +66,59 @@ fn main(){
 	//Setup GUI
     use glium::glutin;
     let mut events_loop = glutin::EventsLoop::new();
-    let window = glutin::WindowBuilder::new();
-    let context = glutin::ContextBuilder::new().with_multisampling(8).with_vsync(false);
+    let window = glutin::WindowBuilder::new().with_title("Scope");
+    let context = glutin::ContextBuilder::new().with_multisampling(0).with_vsync(false);
     let display = glium::Display::new(window, context, &events_loop).unwrap();
-	let system = glium_text::TextSystem::new(&display);
-	//TODO: Figure out licensing
-	let font = glium_text::FontTexture::new(&display, &include_bytes!("../resources/UbuntuMono-R.ttf")[..], 70, glium_text::FontTexture::ascii_character_list()).unwrap();
+	
 
 	//Spawn point processing thread
 	let settings = ReaderSettings {};
 	let (send_points, rx_points): (Sender<Point>, Receiver<Point>) = channel::unbounded();
-	std::thread::spawn(move || {read_thread_main(&rx_stdin, &send_points, &settings);});
+	let _parse_thread = std::thread::spawn(move || {read_thread_main(&rx_stdin, &send_points, &settings);});
 
-	let scale = 0.04;
-	let mat = [
-        [scale, 0.0, 0.0, 0.],
-        [0.0, scale, 0.0, 0.],
-        [0.0, 0.0, scale, 0.0],
-        [ -0.98 , 0.96, 0.0, 1.0f32],
-    ];
 
-	let mut signal_manager = SignalManager::new(&display);
+
+    let mut ui = UI::new(&display);
+
+    // display.get_free_video_memory()
+
+    let mut window_size = display.gl_window().get_inner_size().unwrap();
+    let mut mouse_pos = (0f64, 0f64);
+
+	
 	let refresh_rate = Duration::from_millis(30);
 	let mut ft_av = 16000f64;
 	//Main render loop
 	let mut closed = false;
 	while !closed {
 		let frametime = Instant::now();
+	    //TODO: Only redraw when need user input or new data to draw
 	    events_loop.poll_events(|ev| {
 	        match ev {
 	            glutin::Event::WindowEvent { event, .. } => match event {
-	                glutin::WindowEvent::Closed => closed = true,
-	                // glutin::WindowEvent::CursorMoved{position, ..} => {println!(":#P:{:?},{:?}", position.0, position.1);},
+	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
+	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
 	                glutin::WindowEvent::KeyboardInput{input, ..} => {println!("{:?}", input.scancode)},
+	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()}
 	                _ => (),
 	            },
 	            _ => (),
 	        }
 	    });
-	    //TODO: Only redraw when need user input or new data to draw
+	    if closed{ break; }// glutin window closed event makes clear_color hang 
+
 	    let mut target = display.draw();
-	    target.clear_color(0.06, 0.06, 0.06, 1.0);
 
-	    signal_manager.draw_signals(&mut target);
+	    target.clear_color(0.012, 0.012, 0.012, 1.0);
+	 
+	    ui.draw(&mut target, window_size, mouse_pos, ft_av);
 
-	    let ft = duration2us(&frametime.elapsed());
-	    ft_av = 0.95*ft_av + 0.05*ft;
-	    let text = glium_text::TextDisplay::new(&system, &font, &ft_av.floor().to_string());
-	    glium_text::draw(&text, &system, &mut target, mat, (1.0, 1.0, 1.0, 1.0)).unwrap();
+	    ft_av = 0.95*ft_av + 0.05*duration2us(&frametime.elapsed());
+	 
 	    target.finish().unwrap();
-	    get_points(&rx_points, &mut signal_manager, &frametime, &refresh_rate);
+	 
+	    get_points(&rx_points, &mut ui.signal_manager, &frametime, &refresh_rate);
+	 
 	}
 }
 
@@ -141,7 +147,7 @@ struct ReaderSettings {
 }
 
 
-fn read_thread_main(rx_stdin: &Receiver<(Duration, String)>, send_points: &Sender<Point>, settings: &ReaderSettings) {
+fn read_thread_main(rx_stdin: &Receiver<(Duration, String, usize)>, send_points: &Sender<Point>, settings: &ReaderSettings) {
 	let deci: &'static str =  r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?";
 	let one = &format!("~\\.(.+)@\\s*({})",deci);
 	let two = &format!("~\\.(.+)@\\s*({})\\s*,\\s*({})", deci, deci);
@@ -165,27 +171,26 @@ fn read_thread_main(rx_stdin: &Receiver<(Duration, String)>, send_points: &Sende
 	loop {
 		match rx_stdin.try_recv() {
 			Ok(d) => {
-				parse_line(&d.0, &d.1, send_points, &set, &grabbers, settings)
+				parse_line(&d.0, &d.1, d.2, send_points, &set, &grabbers, settings)
 			},
 			Err(e) => {
 				match e {
 					TryRecvError::Disconnected => {}, //TODO: Continue to draw but at const framerate
 					TryRecvError::Empty => {}
 				}
-				break;
 			}
 		}
 	}
 }
 
-fn parse_line(timestamp: &Duration, data: &String, tx: &Sender<Point>, set: &RegexSet, grabbers: &[Regex; 5], settings: &ReaderSettings){
+fn parse_line(timestamp: &Duration, data: &String, ln: usize, tx: &Sender<Point>, set: &RegexSet, grabbers: &[Regex; 5], settings: &ReaderSettings){
 	let ts = duration2us(timestamp);
 	let which: Vec<usize> = set.matches(data).into_iter().collect();
 	if which.len() == 0 { //No candidate matches
 		passthrough(data);
 	} else {
 		let idx = which.into_iter().fold(0, std::cmp::max); // Get the most desired candidate that will match
-		match handle_caps(grabbers[idx].captures(data), ts, settings) { // Match the result of handling the capture groups. If a valid point was found send it. Otherwise pass line through and log it. 
+		match handle_caps(grabbers[idx].captures(data), ts, ln, settings) { // Match the result of handling the capture groups. If a valid point was found send it. Otherwise pass line through and log it. 
 			Some(tosend) => { //Vaild point send to main thread
 				match tx.send(tosend){
 					Ok(_) => {},
@@ -198,7 +203,7 @@ fn parse_line(timestamp: &Duration, data: &String, tx: &Sender<Point>, set: &Reg
 	}
 }
 
-fn handle_caps(caps: Option<Captures>, timestamp: f64, settings: &ReaderSettings) -> Option<Point>{
+fn handle_caps(caps: Option<Captures>, timestamp: f64, ln: usize, settings: &ReaderSettings) -> Option<Point>{
 	let vals = caps.unwrap(); //Guaranteed unwrap since captured by RegexSet
 
 	let mut c = vals.iter();
@@ -213,10 +218,10 @@ fn handle_caps(caps: Option<Captures>, timestamp: f64, settings: &ReaderSettings
 		}).collect();
 
 	return Some(match v.len(){
-		1 => Point{name, timestamp, ty:PointType::D1, x:v[0], y:NAN, z:NAN},
-		2 => Point{name, timestamp, ty:PointType::D2, x:v[0], y:v[1], z:NAN},
-		3 => Point{name, timestamp, ty:PointType::D3, x:v[0], y:v[1], z:v[2]},
-		_ => Point{name, timestamp, ty:PointType::BreakPoint, x:NAN, y:NAN, z:NAN},
+		1 => Point{name, line_number: ln, timestamp, ty:PointType::D1, x:v[0], y:NAN, z:NAN},
+		2 => Point{name, line_number: ln, timestamp, ty:PointType::D2, x:v[0], y:v[1], z:NAN},
+		3 => Point{name, line_number: ln, timestamp, ty:PointType::D3, x:v[0], y:v[1], z:v[2]},
+		_ => Point{name, line_number: ln, timestamp, ty:PointType::BreakPoint, x:NAN, y:NAN, z:NAN},
 	});
 }
 

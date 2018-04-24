@@ -4,7 +4,7 @@ use std;
 use glium::VertexBuffer;
 use glium::Surface;
 use std::collections::VecDeque;
-use super::signal::{Axes, Point, RangedDeque};
+use super::signal::{Axes, Point, RangedDeque, PickData};
 use self::color_set::Color;
 
 #[derive(Debug, Copy, Clone)]
@@ -18,10 +18,10 @@ fn make_vertex<T>(color: &Color, pt: &Point<T>) -> Vertex
 	where T: Axes<T>{
 	let d = pt.axes.as_vec();
 	let (x, y, z) = match d.len(){
-		1 => (pt.time, d[0], 1.),
 		2 => (d[0], d[1], 1.),
-		3 => (d[0], d[1], d[2]), //TODO: z should be d[1]/max z
-		_ => panic!("Point can only be of type D1, D2, D3 which can only create a vertex of up to length three")
+		3 => (d[1], d[2], 1.),
+		4 => (d[1], d[2], d[3]), //TODO: z should be d[1]/max z
+		_ => panic!("Point can only be of type D1, D2, D3 which can only create a vec of len 2 to 4")
 	};
 	let v = Vertex{
 		position: [(x) as f32, (y) as f32, z as f32],
@@ -30,14 +30,14 @@ fn make_vertex<T>(color: &Color, pt: &Point<T>) -> Vertex
 	return v;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Transform {
     pub dx: f32, pub dy: f32,
     pub sx: f32, pub sy: f32, pub sz: f32
 }
 
-impl From<Transform> for [[f32; 4]; 4] {
-    fn from(tf: Transform) -> Self {
+impl <'a> From<&'a Transform> for [[f32; 4]; 4] {
+    fn from(tf: &Transform) -> Self {
         [
         [tf.sx, 0.0, 0.0, 0.0],
         [0.0, tf.sy, 0.0, 0.0],
@@ -47,12 +47,14 @@ impl From<Transform> for [[f32; 4]; 4] {
     }
 }
 
+
+
 struct VBOChunks{
 	vbos: VecDeque<VertexBuffer<Vertex>>,
 	current_vbo_size: usize,
 	connected: bool
 }
-const VBO_SIZE: usize = 64;
+const VBO_SIZE: usize = 256;
 impl VBOChunks{
 	fn new(connected: bool) -> VBOChunks{
 		VBOChunks{vbos: VecDeque::new(), current_vbo_size: 0, connected}
@@ -97,26 +99,41 @@ impl VBOChunks{
 }
 
 
+
+
+//transform applied in shader, point x and y, unit scale x and y. allows draw style to select what point values are used for x and y (x might be time)
+fn point_pos(trans: Transform, x: f64, y: f64, us_x: f64, us_y: f64) -> (f32, f32) {
+	let x2 = (x*us_x) as f32;// TODO: these need to work according to unit scale implementation, find a nice way for signal to handle this
+	let y2 = (y*us_y) as f32;
+    (x2*trans.sx+trans.dx, y2*trans.sy+trans.dy)
+}
+
+fn find_min<T, F>(points: &RangedDeque<T>, cmp: F) -> (Option<usize>, f32) where
+	T: Axes<T> + Clone + std::ops::Index<usize>,
+	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone,
+	F: Fn(&Point<T>)->f32{
+	let mut min_val = 2.0;
+	let mut min_idx = None;
+	for (i, pt) in points.iter().enumerate(){
+		let d = cmp(pt);
+		if d < min_val{
+			min_val = d;
+			min_idx = Some(i)
+		}
+	}
+	return (min_idx, min_val)
+}
+
+fn find_min_ord(){
+	unimplemented!();
+}
+
+
+
 pub trait DrawStyle<T> {
 	fn push(&mut self, pt: &Point<T>, color: &Color, points:&RangedDeque<T>, display: &glium::Display);
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame);
-    fn pick(&self);
-}
-
-
-pub struct DrawHidden{
-
-}
-impl <T> DrawStyle<T> for DrawHidden{
-	fn push(&mut self, _pt: &Point<T>, _color: &Color, _points:&RangedDeque<T>, _display: &glium::Display){
-		unimplemented!()
-	}
-	fn draw(&self, _trans: &Transform, _target: &mut glium::Frame){
-		unimplemented!()
-	}
-	fn pick(&self){
-		unimplemented!()
-	}
+    fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>;
 }
 
 
@@ -177,7 +194,7 @@ impl <T> DrawStyle<T> for Scatter
 	}
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame){
 		let indices = glium::index::NoIndices(glium::index::PrimitiveType::Points);
-		let t: [[f32; 4]; 4] = (*trans).into();
+		let t: [[f32; 4]; 4] = trans.into();
 		let uniforms = uniform! {
 		    matrix: t
 		};
@@ -186,8 +203,22 @@ impl <T> DrawStyle<T> for Scatter
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
 	}
-	fn pick(&self){
-		unimplemented!()
+	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>{
+		let mut t = trans.clone();
+		t.dx -= mouse.0;
+		t.dy -= mouse.1;
+		let xidx = if unit_scale.len() == 2{0} else {1};
+		let ux = unit_scale[xidx];
+		let uy = unit_scale[2];
+		let d = find_min(points, move |pt|{
+			let (x,y) = point_pos(t.clone(), pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy);
+			x.abs()+y.abs()
+		});
+		if let Some(idx) = d.0{
+			let pt = points.get(idx);
+			return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+		}
+		return None;
 	}
 }
 
@@ -211,7 +242,7 @@ impl Lines {
 			    uniform mat4 matrix;
 
 			    void main() {
-			    	attr_color = color;
+			    	attr_color = vec4(color, 1.0);
 			        gl_Position = matrix * vec4(position.xy, 0.0, 1.0);
 			    }
 			"##,
@@ -238,7 +269,7 @@ impl <T> DrawStyle<T> for Lines
 	}
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame){
 		let indices = glium::index::NoIndices(glium::index::PrimitiveType::LineStrip);
-		let t: [[f32; 4]; 4] = (*trans).into();
+		let t: [[f32; 4]; 4] = trans.into();
 		let uniforms = uniform! {
 		    matrix: t
 		};
@@ -247,7 +278,21 @@ impl <T> DrawStyle<T> for Lines
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
 	}
-	fn pick(&self){
-		unimplemented!()
+	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>{
+		let mut t = trans.clone();
+		t.dx -= mouse.0;
+		t.dy -= mouse.1;
+		let xidx = if unit_scale.len() == 2{0} else {1};
+		let ux = unit_scale[xidx];
+		let uy = unit_scale[2];
+		let d = find_min(points, move |pt|{
+			let (x,y) = point_pos(t.clone(), pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy);
+			x.abs()+y.abs()
+		});
+		if let Some(idx) = d.0{
+			let pt = points.get(idx);
+			return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+		}
+		return None;
 	}
 }

@@ -11,8 +11,22 @@ use self::color_set::{Color, Generator};
 // mod drawstyles;
 use drawstyles::*;
 
+
+type Rect = (f64, f64, f64, f64);
+
+static MIN_SCALE: f64 = 1e-12;
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum SignalHealth {
+    Good,
+    InvalidFormat,
+}
+
+
 pub struct MsgPoint{
 	pub name: String,
+	pub line_number: usize,
 	pub timestamp: f64,
 	pub ty: PointType,
 	pub x: f64, pub y: f64, pub z: f64
@@ -27,43 +41,43 @@ pub enum PointType {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct D1([f64;1]);
+pub struct D1([f64;2]);
 #[derive(Debug, Clone, Copy)]
-pub struct D2([f64;2]);
+pub struct D2([f64;3]);
 #[derive(Debug, Clone, Copy)]
-pub struct D3([f64;3]);
+pub struct D3([f64;4]);
 pub trait Axes<T>{ 
+	fn size() -> usize;
 	fn default() -> T;
 	fn ones() -> T;
 	fn as_vec(&self) -> Vec<f64>;
-	fn size() -> usize;
 	fn into(point: MsgPoint) -> Point<T>;
 	}
 impl Axes<D1> for D1 {
-	fn default() -> D1 {D1{0:[NAN; 1]}} 
-	fn ones() -> D1 {D1{0:[1.; 1]}}
+	fn size() -> usize{2}
+	fn default() -> D1 {D1{0:[NAN; 2]}} 
+	fn ones() -> D1 {D1{0:[1.; 2]}}
 	fn as_vec(&self) -> Vec<f64>{self.0.to_vec()}
-	fn size() -> usize{1}
 	fn into(point: MsgPoint) -> Point<D1>{
-		Point::new(point.timestamp, D1{0:[point.x]})
+		Point::new(D1{0:[point.timestamp, point.x]})
 	}
 }
 impl Axes<D2> for D2 {
-	fn default() -> D2 {D2{0:[NAN; 2]}} 
-	fn ones() -> D2 {D2{0:[1.; 2]}}
+	fn size() -> usize{3}
+	fn default() -> D2 {D2{0:[NAN; 3]}} 
+	fn ones() -> D2 {D2{0:[1.; 3]}}
 	fn as_vec(&self) -> Vec<f64>{self.0.to_vec()}
-	fn size() -> usize{2}
 	fn into(point: MsgPoint) -> Point<D2>{
-		Point::new(point.timestamp, D2{0:[point.x, point.y]})
+		Point::new(D2{0:[point.timestamp, point.x, point.y]})
 	}
 }
 impl Axes<D3> for D3 {
-	fn default() -> D3 {D3{0:[NAN; 3]}} 
-	fn ones() -> D3 {D3{0:[1.; 3]}}
+	fn size() -> usize{4}
+	fn default() -> D3 {D3{0:[NAN; 4]}} 
+	fn ones() -> D3 {D3{0:[1.; 4]}}
 	fn as_vec(&self) -> Vec<f64>{self.0.to_vec()}
-	fn size() -> usize{3}
 	fn into(point: MsgPoint) -> Point<D3>{
-		Point::new(point.timestamp, D3{0:[point.x, point.y, point.z]})
+		Point::new(D3{0:[point. timestamp, point.x, point.y, point.z]})
 	}
 }
 
@@ -89,13 +103,12 @@ impl std::ops::Index<usize> for D3 {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Point<A>{
-    pub time: f64,
     pub axes: A
 }
 
 impl <A> Point<A>{
-	fn new(time: f64, axes: A) -> Point<A>{
-		Point{time, axes}
+	fn new(axes: A) -> Point<A>{
+		Point{axes}
 	}
 }
 
@@ -128,19 +141,23 @@ impl <A> RangedDeque<A> where
 		let mut range_update = false;
 		for i in 0..A::size(){
 			let t = pt.axes[i].clone().into();
-			if self.range.min[i] < t{ 
+			if self.range.min[i] > t || self.range.min[i].is_nan(){ 
 				self.range.min[i] = t;
 				range_update = true;
-			} else if self.range.max[i] > t{
+			} else if self.range.max[i] < t || self.range.max[i].is_nan(){
 				self.range.max[i] = t;
 				range_update = true;
 			}
 		}
+		// println!("{:#?}", self.range);
 		self.points.push_back(pt);
 		return range_update;
 	}
 	pub fn get_last(&self) -> Option<&Point<A>>{
 		self.points.back()
+	}
+	pub fn get(&self, idx: usize) -> &Point<A>{
+		&self.points[idx]
 	}
 	#[allow(dead_code)]
 	fn pop(&mut self){
@@ -151,6 +168,9 @@ impl <A> RangedDeque<A> where
 	fn get_range(&self) -> Range{
 		self.range.clone()
 	}
+	pub fn iter(&self) -> std::collections::vec_deque::Iter<Point<A>>{
+		self.points.iter()
+	}
 }
 
 struct Signal<'a, A> {
@@ -159,6 +179,7 @@ struct Signal<'a, A> {
     unit_scale: Vec<f64>, //If axis values exceed that which can fit in f32, divide by these values and use these values for display
     points: RangedDeque<A>,
     style: Box<DrawStyle<A>>,
+    health: SignalHealth,
     display: &'a glium::Display
 }
 
@@ -168,40 +189,70 @@ impl <'a, T> Signal<'a, T>
 	fn new(name: String, style: Box<DrawStyle<T>>,  display: &'a glium::Display) -> Signal<'a,T>{
 		Signal{	
 				name: name.clone(), 
-				color: Generator::get_color(name, 0.9, 0.9),
+				color: Generator::get_color(name, 1., 1.),
 				unit_scale: T::ones().as_vec(), 
 				points: RangedDeque::new(), 
 				style,
+				health: SignalHealth::Good,
 				display
 			}
 	}
-	fn push(&mut self, pt: Point<T>){
+	fn get_transform(&self, area: Rect) -> Transform{
+		// DRAWSTYLE SHOIULD PROVIDE RANGE as utlimately its what decides where points go
+		// What to do abt 1d points and ranges
+		let xs = ((area.2-area.0)/(self.points.range.max[1]-self.points.range.min[1])).max(MIN_SCALE);
+
+		let ys = ((area.3-area.1)/(self.points.range.max[2]-self.points.range.min[2])).max(MIN_SCALE);
+
+		Transform{
+			dx: (area.2-self.points.range.max[1]*xs) as f32, dy: ((ys*(self.points.range.max[2]+self.points.range.min[2])/2.)+(area.3+area.1)/2.0) as f32,
+			sx: xs as f32, sy: ys as f32, sz: 1.0
+		}
+	}
+}
+
+pub trait GenericSignal {
+    fn draw(&self, target: &mut glium::Frame, area: Rect);
+    fn add_point(&mut self, point: MsgPoint);
+    fn get_color(&self)-> Color;
+    fn get_health(&self) -> SignalHealth;
+    fn pick(&self, mouse: (f32, f32), area: Rect)->Option<PickData>;
+    fn get_point_string(&self, idx: usize) -> String;
+}
+
+impl <'a, T> GenericSignal for Signal<'a, T>
+	where T: Axes<T> + Clone + std::ops::Index<usize> + std::fmt::Debug,
+	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+	fn draw(&self, target: &mut glium::Frame, area: Rect){
+		
+		let trans = self.get_transform(area);
+
+		self.style.draw(&trans, target);
+	}
+	fn add_point(&mut self, point: MsgPoint){
+		let pt = T::into(point);
 		// Do unit scaling here before pass to drawstyle
 		self.points.push(pt.clone());
 		self.style.push(&pt, &self.color, &self.points, self.display);
 	}
-	fn _draw(&self, target: &mut glium::Frame){
-		let trans = Transform{
-			dx: 0.0, dy: 0.0,
-			sx: 1.0, sy: 1.0, sz: 1.0
-		};
-		self.style.draw(&trans, target);
+	fn pick(&self, mouse: (f32, f32), area: Rect) -> Option<PickData>{
+		self.style.pick( &self.points, mouse, self.get_transform(area), self.unit_scale.clone())
 	}
-}
-
-trait GenericSignal {
-    fn draw(&self, target: &mut glium::Frame);
-    fn add_point(&mut self, point: MsgPoint);
-}
-
-impl <'a, T> GenericSignal for Signal<'a, T>
-	where T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
-	fn draw(&self, target: &mut glium::Frame){
-		self._draw(target);
+	fn get_color(&self) -> Color{
+		self.color
 	}
-	fn add_point(&mut self, point: MsgPoint){
-		self.push(T::into(point));
+	fn get_health(&self) -> SignalHealth{
+		self.health.clone()
+	}
+	fn get_point_string(&self, idx: usize) -> String{
+		//DrawStyle should provide this
+		let mut rslt = String::from("(");
+		for i in self.points.get(idx).axes.as_vec(){
+			rslt.push_str(&format!("{:.*}, ", 3, i));
+		}
+		rslt.pop();rslt.pop();
+		rslt.push_str(")");
+		rslt
 	}
 }
 
@@ -235,7 +286,7 @@ impl <'a> SignalManager<'a>{
 						Box::new(Signal::new(name.clone(), ds, self.display))
 					},
 					PointType::D2 => {
-						let ds: Box<DrawStyle<D2>> = Box::new(Scatter::new(self.display));
+						let ds: Box<DrawStyle<D2>> = Box::new(Lines::new(self.display));
 						Box::new(Signal::new(name.clone(), ds, self.display))
 					},
 					PointType::D3=> {
@@ -254,11 +305,20 @@ impl <'a> SignalManager<'a>{
 		}
 	}
 
-	pub fn draw_signals(&self, target: &mut glium::Frame){
+	pub fn draw_signals(&self, target: &mut glium::Frame, area: Rect){
 		for (_name, sig) in self.signals.iter(){
-			sig.draw(target);
+			sig.draw(target, area);
 		}
+	}
+
+	pub fn iter(&self) -> std::collections::hash_map::Iter<String, Box<GenericSignal + 'a>>{
+		self.signals.iter()
 	}
 }
 
-		
+
+
+pub struct PickData{
+	pub index: usize,
+	pub screen_pos: (f32, f32)
+}

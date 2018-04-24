@@ -21,8 +21,10 @@ fn get_angle<T: Debug>(arg: T) -> f32 {
 		hasher.write_u8(c as u8);
 	}
 	let mut ang = hasher.finish() as f64;
-	ang = ang / 10f64.powf(ang.log10().floor()+1.);
-	println!("val hashes to ang: {:?} {:?}", ang, ang as f32);
+    // println!("~.A@{:?}", ang as f32); 
+	ang = ang / 10f64.powf(ang.log10().floor());
+    ang -= ang.floor();//TODO without this ang tends heavily to less than 2
+	// println!("~.C@{:?}", ang as f32);
 	ang as f32
 }
 
