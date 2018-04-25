@@ -33,7 +33,7 @@ fn duration2us(dur: &Duration) -> f64 {
    (dur.as_secs() * 1000_000 + dur.subsec_nanos() as u64 / 1000) as f64
 }
 
-
+//TODO: Forward std error
 fn main(){
 	//Mark the start of the program
 	let epoch = Instant::now();

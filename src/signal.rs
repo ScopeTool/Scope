@@ -180,6 +180,7 @@ struct Signal<'a, A> {
     points: RangedDeque<A>,
     style: Box<DrawStyle<A>>,
     health: SignalHealth,
+    pick_thresh: f32,
     display: &'a glium::Display
 }
 
@@ -194,6 +195,7 @@ impl <'a, T> Signal<'a, T>
 				points: RangedDeque::new(), 
 				style,
 				health: SignalHealth::Good,
+				pick_thresh: 0.1,
 				display
 			}
 	}
@@ -236,7 +238,7 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 		self.style.push(&pt, &self.color, &self.points, self.display);
 	}
 	fn pick(&self, mouse: (f32, f32), area: Rect) -> Option<PickData>{
-		self.style.pick( &self.points, mouse, self.get_transform(area), self.unit_scale.clone())
+		self.style.pick( &self.points, mouse, self.get_transform(area), self.unit_scale.clone(), self.pick_thresh)
 	}
 	fn get_color(&self) -> Color{
 		self.color

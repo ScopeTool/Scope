@@ -46,11 +46,14 @@ impl <'a> UI<'a> {
 	    let view_start_y = -1.0 + self.get_axis_height() + self.get_cmd_height();
 	    let view_end_x = 1.0 - self.get_log_width() - self.get_ledgend_width() - self.get_axis_width();
 	    let view_end_y = 1.0 - self.get_axis_height();
+
 	    let area = (view_start_x, view_start_y, view_end_x, view_end_y);
+
 	    self.signal_manager.draw_signals(target, area);
 
 	    let cmd_height = self.get_cmd_height()*0.9;
 	    self.draw_rect(target, (0.01, 0.01, 0.01, 1.0), (view_start_x,(view_start_y-1.0)/2.0 - cmd_height/2.0),((view_end_x-view_start_x), cmd_height));
+
 	    self.draw_ledgend(target, view_end_x);
 
 	    // self.draw_rect(target, (1.,1.,1.,1.), (mouse.0 as f64, mouse.1 as f64), (0.1,0.1) );
@@ -66,6 +69,7 @@ impl <'a> UI<'a> {
     		    ];
 	    		let text = glium_text::TextDisplay::new(&self.system, &self.font, &sig.get_point_string(pick.index));
 	    		let c = sig.get_color();
+	    		self.draw_rect(target, (0.,0.,0.,1.), (pick.screen_pos.0 as f64, pick.screen_pos.1 as f64 - 0.01f64), ((text.get_width()*scale )as f64, (text.get_height()*scale*1.5) as f64));
 			    glium_text::draw(&text, &self.system, target, mat, (c.0, c.1, c.2, 1.0)).unwrap();
 	    	}
 	    }

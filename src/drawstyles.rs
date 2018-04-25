@@ -133,7 +133,7 @@ fn find_min_ord(){
 pub trait DrawStyle<T> {
 	fn push(&mut self, pt: &Point<T>, color: &Color, points:&RangedDeque<T>, display: &glium::Display);
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame);
-    fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>;
+    fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>;
 }
 
 
@@ -203,7 +203,7 @@ impl <T> DrawStyle<T> for Scatter
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
 	}
-	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>{
+	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>{
 		let mut t = trans.clone();
 		t.dx -= mouse.0;
 		t.dy -= mouse.1;
@@ -215,8 +215,10 @@ impl <T> DrawStyle<T> for Scatter
 			x.abs()+y.abs()
 		});
 		if let Some(idx) = d.0{
-			let pt = points.get(idx);
-			return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+			if pick_thresh >= d.1{
+				let pt = points.get(idx);
+				return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+			}
 		}
 		return None;
 	}
@@ -278,7 +280,7 @@ impl <T> DrawStyle<T> for Lines
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
 	}
-	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>) -> Option<PickData>{
+	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>{
 		let mut t = trans.clone();
 		t.dx -= mouse.0;
 		t.dy -= mouse.1;
@@ -290,8 +292,10 @@ impl <T> DrawStyle<T> for Lines
 			x.abs()+y.abs()
 		});
 		if let Some(idx) = d.0{
-			let pt = points.get(idx);
-			return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+			if pick_thresh >= d.1{
+				let pt = points.get(idx);
+				return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[2].clone().into(), ux, uy)});
+			}
 		}
 		return None;
 	}
