@@ -190,7 +190,7 @@ impl <'a, T> Signal<'a, T>
 	fn new(name: String, style: Box<DrawStyle<T>>,  display: &'a glium::Display) -> Signal<'a,T>{
 		Signal{	
 				name: name.clone(), 
-				color: Generator::get_color(name, 1., 1.),
+				color: Generator::get_color(name, 0.8, 1.),
 				unit_scale: T::ones().as_vec(), 
 				points: RangedDeque::new(), 
 				style,

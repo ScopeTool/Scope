@@ -97,9 +97,10 @@ fn main(){
 	        match ev {
 	            glutin::Event::WindowEvent { event, .. } => match event {
 	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
+	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
 	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
-	                glutin::WindowEvent::KeyboardInput{input, ..} => {println!("{:?}", input.scancode)},
-	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()}
+	                glutin::WindowEvent::KeyboardInput{input, ..} => {println!("{:#?}", input)},
+	                glutin::WindowEvent::ReceivedCharacter(c) if c != '\u{7f}' && c != '\u{8}' =>  println!("{:?}", c),
 	                _ => (),
 	            },
 	            _ => (),
