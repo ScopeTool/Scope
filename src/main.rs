@@ -5,6 +5,9 @@ extern crate regex;
 extern crate clap;
 extern crate crossbeam_channel as channel;
 
+extern crate glimput;
+use self::glimput::Editor;
+
 
 use glium::Surface;
 use channel::{Receiver, Sender, TryRecvError};
@@ -77,6 +80,7 @@ fn main(){
 	let _parse_thread = std::thread::spawn(move || {read_thread_main(&rx_stdin, &send_points, &settings);});
 
 
+	// match display.gl_window().set_cursor_state(glutin::CursorState::Hide){ _ => ()}
 
     let mut ui = UI::new(&display);
 
@@ -99,8 +103,8 @@ fn main(){
 	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
 	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
 	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
-	                glutin::WindowEvent::KeyboardInput{input, ..} => {println!("{:#?}", input)},
-	                glutin::WindowEvent::ReceivedCharacter(c) if c != '\u{7f}' && c != '\u{8}' =>  println!("{:?}", c),
+	                glutin::WindowEvent::KeyboardInput{input: _, ..}  => {},
+	                glutin::WindowEvent::ReceivedCharacter(c) => ui.send_key(c),
 	                _ => (),
 	            },
 	            _ => (),

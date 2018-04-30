@@ -31,7 +31,7 @@ def log(chan, *args):
 # 	sleep(0.08)
 
 sleep(1)
-r = .9
+r = .999
 divs = 64/4 + 3
 step = r/divs
 for x in xrange(divs): 

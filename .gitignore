@@ -2,7 +2,8 @@
 *.kra~
 *.jpg
 */target/
-/target/debug/
+/target/
+/target/
 **/*.rs.bk
 Cargo.lock
 .directory

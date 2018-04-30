@@ -248,12 +248,11 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	}
 	fn get_point_string(&self, idx: usize) -> String{
 		//DrawStyle should provide this
-		let mut rslt = String::from("(");
+		let mut rslt = String::from("");
 		for i in self.points.get(idx).axes.as_vec(){
 			rslt.push_str(&format!("{:.*}, ", 3, i));
 		}
 		rslt.pop();rslt.pop();
-		rslt.push_str(")");
 		rslt
 	}
 }

@@ -13,3 +13,4 @@ clap = {version = "~2.30.0", features = ["yaml"]}
 crossbeam-channel = "0.1"
 
 color_set = { path = "color_set" }
+glimput = {path = "glimput"}
