@@ -1,2 +1,3 @@
-sh cargo build && ./gendata.py | target/debug/scope
+#!/bin/bash
+cargo build && ./gendata.py | target/debug/scope
 

@@ -1,6 +1,8 @@
 extern crate glium;
 extern crate glium_text_rusttype as glium_text;
 
+extern crate command_parse;
+
 use std::{
 	rc::Rc,
 	cell::RefCell,
@@ -25,6 +27,7 @@ pub struct UI<'a> {
 	text_height: f32,
 	text_system: glium_text::TextSystem,
 	text_format: RefCell<glium_text::TextDisplay<Rc<glium_text::FontTexture>>>,
+	cmdline_completions: Vec<String>
 }
 
 impl <'a> UI<'a> {
@@ -38,7 +41,9 @@ impl <'a> UI<'a> {
 			font.clone(),
 			 "Aj");
 		let text_height = text.get_height()*1.3;
-    	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text)}
+    	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
+    		cmdline_completions: Vec::new()
+    	}
     }
     pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), mouse_pos: (f64, f64), frametime: f64 ){
     	self.window_size = window_size;
@@ -75,16 +80,39 @@ impl <'a> UI<'a> {
     }
 
     pub fn send_key(&mut self, c: char){
-    	self.editor.send_key(c);
+    	let run = self.editor.send_key(c);
+		self.update_editor(run);
+    }
+
+    pub fn send_event(&mut self, input: glium::glutin::KeyboardInput){
+    	self.editor.send_event(input);
+    }
+
+    fn update_editor(&mut self, run: bool){
+    	let rslt = command_parse::parse(self.editor.get_buffer(), run);
+    	if rslt.valid && run{
+    		self.editor.clear();
+    	}
+    	self.cmdline_completions = rslt.possible_completions;
     }
 
     fn draw_cmdline(&self, target: &mut Frame, area: (f64, f64, f64, f64)){
-    	let rhs = area.0;
+    	let mut rhs = area.0;
     	let cmd_com_y = (area.1-1.0)/2.0;
     	let cmd_height = self.get_cmd_height()*0.95;
     	self.draw_rect(target, DARK_GREY, (rhs,cmd_com_y - cmd_height/2.0),((area.2-area.0), cmd_height));
     	let scale = (cmd_height as f32)*0.65/(self.text_height);
-    	self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), &self.editor.get_buffer());
+
+    	let (first, c, rest) = self.editor.get_buffer_parts();
+    	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), first);
+    	rhs += last;
+    	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (0.8,0.2,0.1, 1.0), c);
+    	rhs += last;
+    	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), rest);
+    	if self.cmdline_completions.len() > 0{
+	    	rhs += last;
+	    	self.draw_text(target, rhs, cmd_com_y, scale, (0.5,0.5,0.5, 1.0), &self.cmdline_completions[0]);
+    	}
     }
 
     fn draw_ledgend(&mut self, target: &mut Frame, view_end_x: f64){

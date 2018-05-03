@@ -1,7 +1,6 @@
 [package]
-name = "glimput"
+name = "command_parse"
 version = "0.1.0"
 authors = ["rademonster <sorenrade@gmail.com>"]
 
 [dependencies]
-glium = "0.20"

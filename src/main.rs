@@ -6,15 +6,15 @@ extern crate clap;
 extern crate crossbeam_channel as channel;
 
 extern crate glimput;
-use self::glimput::Editor;
 
 
 use glium::Surface;
-use channel::{Receiver, Sender, TryRecvError};
+use channel::{Receiver, Sender, RecvError, RecvTimeoutError};
 
 use std::time;
 use std::f64::NAN;
 use time::{Duration, Instant};
+use std::thread::sleep;
 // use std::rc::Rc;
 
 use std::io::{self};
@@ -103,7 +103,7 @@ fn main(){
 	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
 	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
 	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
-	                glutin::WindowEvent::KeyboardInput{input: _, ..}  => {},
+	                glutin::WindowEvent::KeyboardInput{input, ..}  => {ui.send_event(input)},
 	                glutin::WindowEvent::ReceivedCharacter(c) => ui.send_key(c),
 	                _ => (),
 	            },
@@ -129,14 +129,14 @@ fn main(){
 
 fn get_points(rx: &Receiver<Point>, man: &mut SignalManager, frametime: &Instant, refresh_rate: &Duration){
 	loop {
-		match rx.try_recv() {
+		match rx.recv_timeout(refresh_rate.checked_sub(frametime.elapsed()).unwrap_or_else(||Duration::from_millis(0))) {
 			Ok(d) => {
 				man.add_point(d);
 			},
 			Err(e) => {
 				match e {
-					TryRecvError::Disconnected => {}, //TODO: Continue to draw but at const framerate
-					TryRecvError::Empty => {}
+					RecvTimeoutError::Disconnected => {}, //TODO: Continue to draw but at const framerate
+					RecvTimeoutError::Timeout => { return }
 				}
 				break;
 			}
@@ -174,16 +174,11 @@ fn read_thread_main(rx_stdin: &Receiver<(Duration, String, usize)>, send_points:
 	let grabbers = [onegrab, twograb, threegrab, listgrab, nodegrab]; // must match order of regex set constructor
 
 	loop {
-		match rx_stdin.try_recv() {
+		match rx_stdin.recv() {
 			Ok(d) => {
 				parse_line(&d.0, &d.1, d.2, send_points, &set, &grabbers, settings)
 			},
-			Err(e) => {
-				match e {
-					TryRecvError::Disconnected => {}, //TODO: Continue to draw but at const framerate
-					TryRecvError::Empty => {}
-				}
-			}
+			Err(_) => {sleep(Duration::from_secs(1))}
 		}
 	}
 }
@@ -199,7 +194,7 @@ fn parse_line(timestamp: &Duration, data: &String, ln: usize, tx: &Sender<Point>
 			Some(tosend) => { //Vaild point send to main thread
 				match tx.send(tosend){
 					Ok(_) => {},
-					Err(_) => println!("{:?}", "Buffer Error") // Error on channel
+					Err(e) => println!("{:?}", e) // Error on channel
 				}
 			},
 			None => passthrough(data)// Data was not valid syntax || marked to be passed through, must be passed on to stdout
