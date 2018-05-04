@@ -9,7 +9,7 @@ extern crate glimput;
 
 
 use glium::Surface;
-use channel::{Receiver, Sender, RecvError, RecvTimeoutError};
+use channel::{Receiver, Sender, RecvTimeoutError};
 
 use std::time;
 use std::f64::NAN;

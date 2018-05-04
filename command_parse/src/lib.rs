@@ -1,5 +1,3 @@
-
-
 // get suggestions given current buffer state, and parse buffer and set state
 
 pub struct LineState{
@@ -12,7 +10,7 @@ pub struct LineState{
 pub fn parse(line: &str, run: bool) -> LineState {
     let mut valid = false;
     let mut possible_completions = Vec::<String>::new();
-	if line.len() > 0 {
+	if line.len() > 1 {
 	    let cmd: &str = line.split_whitespace().take(1).collect::<Vec<&str>>()[0];
 	    valid = true;
 

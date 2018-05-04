@@ -1,5 +1,7 @@
 extern crate glium;
 extern crate glium_text_rusttype as glium_text;
+extern crate distance;
+use self::distance::damerau_levenshtein as fuzzy_dist; 
 
 extern crate command_parse;
 
@@ -11,6 +13,8 @@ use std::{
 use glium::{Display, Frame, Rect, Surface};
 
 use glimput::Editor;
+
+use glium::glutin::{KeyboardInput, VirtualKeyCode as VKC};
 
 use signal::{SignalManager, SignalHealth};
 use drawstyles::Transform;
@@ -27,7 +31,8 @@ pub struct UI<'a> {
 	text_height: f32,
 	text_system: glium_text::TextSystem,
 	text_format: RefCell<glium_text::TextDisplay<Rc<glium_text::FontTexture>>>,
-	cmdline_completions: Vec<String>
+	cmdline_completions: Vec<String>,
+	completion_idx: usize
 }
 
 impl <'a> UI<'a> {
@@ -42,12 +47,16 @@ impl <'a> UI<'a> {
 			 "Aj");
 		let text_height = text.get_height()*1.3;
     	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
-    		cmdline_completions: Vec::new()
+    		cmdline_completions: Vec::new(), completion_idx: 0
     	}
     }
     pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), mouse_pos: (f64, f64), frametime: f64 ){
     	self.window_size = window_size;
 		self.draw_text(target, -0.98, 0.97, 0.04, (1.0, 1.0, 1.0, 1.0), &frametime.floor().to_string());
+
+		println!("~.{}@{:?}", "frametime", frametime);
+		println!("~.{}@{:?}", "points", self.signal_manager.point_count);
+		println!("~.{}@{:?}", "performance/pt", frametime/self.signal_manager.point_count as f64);
 
 		let mouse = ((2.*(mouse_pos.0/(window_size.0 as f64))-1.) as f32, (1. - 2.*(mouse_pos.1/(window_size.1 as f64))) as f32);
 
@@ -80,12 +89,34 @@ impl <'a> UI<'a> {
     }
 
     pub fn send_key(&mut self, c: char){
-    	let run = self.editor.send_key(c);
-		self.update_editor(run);
+    	if c != '\t'{
+	    	let run = self.editor.send_key(c);
+			self.update_editor(run);
+		}
     }
 
-    pub fn send_event(&mut self, input: glium::glutin::KeyboardInput){
-    	self.editor.send_event(input);
+    pub fn send_event(&mut self, input: KeyboardInput){
+	    if let Some(k) = input.virtual_keycode{
+			if input.state == glium::glutin::ElementState::Released{
+				match k {
+				    VKC::Tab => {
+				    	let mut cmpl = None;
+				    	if let Some(c) = self.get_completion(){
+				    		cmpl = Some(String::from(c));
+				    	}
+				    	if let Some(cmpl) = cmpl{
+					    	self.editor.autofill(&cmpl)
+				    	}
+				    	//TODO: there has to be a better way to do this
+				    }, 
+				    VKC::Return => if input.modifiers.shift && self.cmdline_completions.len() > 0 { 
+				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len() 
+				    }
+				    _ => ()
+				}
+			}
+		}
+		self.editor.send_event(input);
     }
 
     fn update_editor(&mut self, run: bool){
@@ -94,13 +125,19 @@ impl <'a> UI<'a> {
     		self.editor.clear();
     	}
     	self.cmdline_completions = rslt.possible_completions;
+    	let current_term = &self.editor.get_working_term();
+    	self.cmdline_completions.sort_by(|s1, s2|{
+    		fuzzy_dist(current_term, s1).cmp(&fuzzy_dist(current_term, s2))
+    	});
+    	self.completion_idx = 0;
     }
 
     fn draw_cmdline(&self, target: &mut Frame, area: (f64, f64, f64, f64)){
     	let mut rhs = area.0;
     	let cmd_com_y = (area.1-1.0)/2.0;
     	let cmd_height = self.get_cmd_height()*0.95;
-    	self.draw_rect(target, DARK_GREY, (rhs,cmd_com_y - cmd_height/2.0),((area.2-area.0), cmd_height));
+    	let ypos = cmd_com_y - cmd_height/2.0;
+    	self.draw_rect(target, DARK_GREY, (rhs, ypos),((area.2-area.0), cmd_height));
     	let scale = (cmd_height as f32)*0.65/(self.text_height);
 
     	let (first, c, rest) = self.editor.get_buffer_parts();
@@ -109,10 +146,20 @@ impl <'a> UI<'a> {
     	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (0.8,0.2,0.1, 1.0), c);
     	rhs += last;
     	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), rest);
-    	if self.cmdline_completions.len() > 0{
+    	if let Some(cmpl) = self.get_completion(){
 	    	rhs += last;
-	    	self.draw_text(target, rhs, cmd_com_y, scale, (0.5,0.5,0.5, 1.0), &self.cmdline_completions[0]);
+	    	let mut text_dims = self.get_text_dims(scale, cmpl);
+	    	text_dims = (text_dims.0*1.1, text_dims.1*1.1);
+	    	self.draw_rect(target, DARK_GREY, (rhs, ypos+cmd_height), text_dims);
+	    	self.draw_text(target, rhs, ypos+cmd_height + text_dims.1/2., scale, (0.5,0.5,0.5, 1.0), cmpl);
     	}
+    }
+
+    fn get_completion(&self) -> Option<&str>{
+    	if self.cmdline_completions.len() > 0{
+	    	return Some(&self.cmdline_completions[self.completion_idx]);
+	    }
+	    return None;
     }
 
     fn draw_ledgend(&mut self, target: &mut Frame, view_end_x: f64){
@@ -160,6 +207,12 @@ impl <'a> UI<'a> {
     	tf.set_text(text);
     	glium_text::draw(&tf, &self.text_system, target, &trans.into(), color).unwrap();
     	((tf.get_width()*trans.sx )as f64, (tf.get_height()*trans.sy*1.3) as f64)
+    }
+
+    fn get_text_dims(&self, scale: f32,  text: &str) -> (f64,  f64){
+    	let mut tf = self.text_format.borrow_mut();
+    	tf.set_text(text);
+    	((tf.get_width()*scale*self.resquare() )as f64, (tf.get_height()*scale*1.3) as f64)
     }
 
     fn get_log_width(&self) -> f64{

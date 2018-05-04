@@ -115,9 +115,9 @@ impl <A> Point<A>{
 
 
 #[derive(Debug, Clone)]
-struct Range{
-    min: Vec<f64>, //minimums on x y and z
-    max: Vec<f64>
+pub struct Range{
+    pub min: Vec<f64>, //minimums on x y and z
+    pub max: Vec<f64>
 }
 
 //This class supports constant time fifo buffer, and tracks minimums and maximum values
@@ -164,8 +164,7 @@ impl <A> RangedDeque<A> where
 		//TODO: Recompute range if popped val matches range
 		self.points.pop_front();
 	}
-	#[allow(dead_code)]
-	fn get_range(&self) -> Range{
+	pub fn get_range(&self) -> Range{
 		self.range.clone()
 	}
 	pub fn iter(&self) -> std::collections::vec_deque::Iter<Point<A>>{
@@ -200,14 +199,15 @@ impl <'a, T> Signal<'a, T>
 			}
 	}
 	fn get_transform(&self, area: Rect) -> Transform{
-		// DRAWSTYLE SHOIULD PROVIDE RANGE as utlimately its what decides where points go
-		// What to do abt 1d points and ranges
-		let xs = ((area.2-area.0)/(self.points.range.max[1]-self.points.range.min[1])).max(MIN_SCALE);
+		
+		let range = self.style.get_range(&self.points); // this range in xy view space
 
-		let ys = ((area.3-area.1)/(self.points.range.max[2]-self.points.range.min[2])).max(MIN_SCALE);
+		let xs = ((area.2-area.0)/(range.max[0]-range.min[0])).max(MIN_SCALE);
+
+		let ys = ((area.3-area.1)/(range.max[1]-range.min[1])).max(MIN_SCALE);
 
 		Transform{
-			dx: (area.2-self.points.range.max[1]*xs) as f32, dy: ((ys*(self.points.range.max[2]+self.points.range.min[2])/2.)+(area.3+area.1)/2.0) as f32,
+			dx: (area.2-range.max[0]*xs) as f32, dy: ((-ys*(range.max[1]+range.min[1])/2.)+(area.3+area.1)/2.0) as f32,
 			sx: xs as f32, sy: ys as f32, sz: 1.0
 		}
 	}
@@ -260,8 +260,8 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 
 pub struct SignalManager<'a> {
 	signals: HashMap<String, Box<GenericSignal+'a>>,
-
-	display: &'a glium::Display
+	display: &'a glium::Display,
+	pub point_count: usize
 }
 
 impl <'a> SignalManager<'a>{
@@ -270,6 +270,7 @@ impl <'a> SignalManager<'a>{
 	    	// signals_d1: HashMap::new(), signals_d2: HashMap::new(), signals_d3: HashMap::new(),
 	    	signals: HashMap::new(),
 	    	display,
+	    	point_count: 0
 	    }
 	}
 
@@ -283,7 +284,7 @@ impl <'a> SignalManager<'a>{
 			std::collections::hash_map::Entry::Vacant(val) => {
 				let mut ch: Box<GenericSignal+'a> = match point.ty {
 					PointType::D1=> {
-						let ds: Box<DrawStyle<D1>> = Box::new(Scatter::new(self.display));
+						let ds: Box<DrawStyle<D1>> = Box::new(Lines::new(self.display));
 						Box::new(Signal::new(name.clone(), ds, self.display))
 					},
 					PointType::D2 => {
@@ -304,6 +305,7 @@ impl <'a> SignalManager<'a>{
 				println!("New Signal: {:?}", name)
 			}
 		}
+		self.point_count+=1;
 	}
 
 	pub fn draw_signals(&self, target: &mut glium::Frame, area: Rect){

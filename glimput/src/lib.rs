@@ -22,11 +22,6 @@ impl Editor{
 		return ret;
 	}
 
-	pub fn clear(&mut self){
-		self.buffer.clear();
-		self.buffer.push('~');
-		self.cursor = 1;
-	}
 
 	pub fn send_event(&mut self, input: KeyboardInput){
 		if let Some(k) = input.virtual_keycode{
@@ -40,6 +35,45 @@ impl Editor{
 		}
 	}
 
+	pub fn clear(&mut self){
+		self.buffer.clear();
+		self.buffer.push('~');
+		self.cursor = 1;
+	}
+
+	pub fn autofill(&mut self, sub: &str){
+		let mut b = self.buffer.chars().collect::<Vec<_>>();
+		let mut pt = self.cursor-1;
+		while pt > 0 && !is_delim(b[pt]) {
+			b.remove(pt);
+			pt -= 1;
+		} 
+		pt += 1;
+		while pt < b.len() && !is_delim(b[pt]) {
+			b.remove(pt);
+		}
+
+		self.buffer = b.into_iter().collect();
+		self.buffer.insert_str(pt, sub); //TODO: how will this work out with unicode?
+		self.cursor = pt+sub.len();
+		println!("{:?}", self.buffer);
+	}
+
+	pub fn get_working_term(&self) -> String{
+		let b = self.buffer.chars().collect::<Vec<_>>();
+		let mut pt = self.cursor-1;
+		while pt > 0 && !is_delim(b[pt]) {
+			pt -= 1;
+		} 
+		pt += 1;
+		let low = pt;
+		while pt < b.len() && !is_delim(b[pt]) {
+			pt+=1;
+		}
+		return b[low..pt].into_iter().collect()
+	}
+
+
 	pub fn get_buffer(&self) -> &str{
 		&self.buffer[1..]
 	}
@@ -48,3 +82,6 @@ impl Editor{
 		(&self.buffer[0..self.cursor-1], &self.buffer[self.cursor-1..self.cursor], &self.buffer[self.cursor..self.buffer.len()])
 	}
 }
+	fn is_delim(c: char) -> bool{
+		return ' ' == c;
+	}

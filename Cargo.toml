@@ -6,6 +6,7 @@ authors = ["rademonster <sorenrade@gmail.com>"]
 [dependencies]
 glium = "0.20"
 glium_text_rusttype = "0.3.1"
+distance = "0.4"
 
 regex = "0.2.6"
 clap = {version = "~2.30.0", features = ["yaml"]}
