@@ -129,12 +129,37 @@ fn find_min<T, F>(points: &RangedDeque<T>, cmp: F) -> (Option<usize>, f32) where
 // }
 
 
+fn get_std_pt_strs<T>(pt: &Point<T>, xidx: usize) -> (String, String, String)
+	where T: Axes<T> + Clone + std::ops::Index<usize>,
+	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+	//DrawStyle should provide this
+	let v = pt.axes.as_vec();
+	let ts = v[0];
+	let x = v[xidx];
+	let y = v[xidx+1];
+	let mut z = String::new();
+	if xidx != 0{
+		z.push_str(&format!("{:.*} ns, ", 3, ts))
+	}
+	if v.len() > 3{
+		z.push_str(&format!("{:.*}", 3, v[3]))
+	} else {
+		z.pop(); z.pop();
+	}
+	(
+		format!("{:.*}", 3, x),
+		format!("{:.*}", 3, y),
+		z
+	)
+}
+
 
 pub trait DrawStyle<T> {
 	fn push(&mut self, pt: &Point<T>, color: &Color, points:&RangedDeque<T>, display: &glium::Display);
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame);
     fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>;
     fn get_range(&self, points: &RangedDeque<T>) -> Range;
+    fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String);
 }
 
 
@@ -230,6 +255,9 @@ impl <T> DrawStyle<T> for Scatter
 		}
 		return Range{min: vec![r.min[1], r.min[2]], max: vec![r.max[1], r.max[2]]};
 	}
+	fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String){
+		get_std_pt_strs(pt,  if T::size() == 2{0} else {1})
+	}
 }
 
 pub struct Lines{
@@ -314,5 +342,8 @@ impl <T> DrawStyle<T> for Lines
 			return Range{min: vec![r.min[0], r.min[1]], max: vec![r.max[0], r.max[1]]};
 		}
 		return Range{min: vec![r.min[1], r.min[2]], max: vec![r.max[1], r.max[2]]};
+	}
+	fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String){
+		get_std_pt_strs(pt,  if T::size() == 2{0} else {1})
 	}
 }

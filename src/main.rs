@@ -17,7 +17,7 @@ use time::{Duration, Instant};
 use std::thread::sleep;
 // use std::rc::Rc;
 
-use std::io::{self};
+use std::io::{self, Write};
 use regex::{Regex, RegexSet, Captures};
 use clap::{App};
 
@@ -80,7 +80,7 @@ fn main(){
 	let _parse_thread = std::thread::spawn(move || {read_thread_main(&rx_stdin, &send_points, &settings);});
 
 
-	// match display.gl_window().set_cursor_state(glutin::CursorState::Hide){ _ => ()}
+	match display.gl_window().set_cursor_state(glutin::CursorState::Hide){ _ => ()}
 
     let mut ui = UI::new(&display);
 
@@ -90,7 +90,7 @@ fn main(){
     let mut mouse_pos = (0f64, 0f64);
 
 	
-	let refresh_rate = Duration::from_millis(30);
+	let refresh_rate = Duration::from_millis(30); //TODO: setting refresh rate to 15ms results in serious performance degradation
 	let mut ft_av = 16000f64;
 	//Main render loop
 	let mut closed = false;
@@ -227,5 +227,5 @@ fn handle_caps(caps: Option<Captures>, timestamp: f64, ln: usize, settings: &Rea
 
 fn passthrough(line: &String) {
 	// Log data for later examination if breakpoint is reached etc
-    print!("{}", line) //TODO: Ensure that stdout is still open and writable
+    if let Ok(_) = write!(io::stdout(), "{}", line){}
 }

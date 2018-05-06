@@ -219,7 +219,7 @@ pub trait GenericSignal {
     fn get_color(&self)-> Color;
     fn get_health(&self) -> SignalHealth;
     fn pick(&self, mouse: (f32, f32), area: Rect)->Option<PickData>;
-    fn get_point_string(&self, idx: usize) -> String;
+    fn get_point_strings(&self, idx: usize) -> (String, String, String);
 }
 
 impl <'a, T> GenericSignal for Signal<'a, T>
@@ -246,14 +246,8 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	fn get_health(&self) -> SignalHealth{
 		self.health.clone()
 	}
-	fn get_point_string(&self, idx: usize) -> String{
-		//DrawStyle should provide this
-		let mut rslt = String::from("");
-		for i in self.points.get(idx).axes.as_vec(){
-			rslt.push_str(&format!("{:.*}, ", 3, i));
-		}
-		rslt.pop();rslt.pop();
-		rslt
+	fn get_point_strings(&self, idx: usize) -> (String, String, String){
+		self.style.get_point_strs(self.points.get(idx))
 	}
 }
 

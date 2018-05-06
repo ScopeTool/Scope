@@ -23,17 +23,34 @@ type Color = (f32, f32, f32, f32);
 
 const DARK_GREY: Color = (0.01, 0.01, 0.01, 1.0);
 
+#[derive(Debug)]
+struct DataCursor {
+    pos: (f64, f64),
+    signal: Option<String>
+}
+
+impl DataCursor{
+	fn new() -> DataCursor{
+		DataCursor{pos: (0.,0.), signal: None}
+	}
+}
+
 pub struct UI<'a> {
 	pub signal_manager: SignalManager<'a>,
 	editor: Editor,
 	window_size: (u32, u32),
 	ledgend_width: f32,
+	axis_width: f64,
 	text_height: f32,
 	text_system: glium_text::TextSystem,
 	text_format: RefCell<glium_text::TextDisplay<Rc<glium_text::FontTexture>>>,
 	cmdline_completions: Vec<String>,
-	completion_idx: usize
+	completion_idx: usize,
+	selected_sig: Option<String>,
+	cursor: DataCursor, hover_rad: f64, 
+	cursor2: Option<DataCursor>
 }
+
 
 impl <'a> UI<'a> {
     pub fn new(display: &Display) -> UI{
@@ -47,45 +64,106 @@ impl <'a> UI<'a> {
 			 "Aj");
 		let text_height = text.get_height()*1.3;
     	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
-    		cmdline_completions: Vec::new(), completion_idx: 0
+    		axis_width: 0.,
+    		cmdline_completions: Vec::new(), completion_idx: 0,
+    		selected_sig: None,
+    		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.1, 
     	}
     }
     pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), mouse_pos: (f64, f64), frametime: f64 ){
     	self.window_size = window_size;
 		self.draw_text(target, -0.98, 0.97, 0.04, (1.0, 1.0, 1.0, 1.0), &frametime.floor().to_string());
 
-		println!("~.{}@{:?}", "frametime", frametime);
-		println!("~.{}@{:?}", "points", self.signal_manager.point_count);
-		println!("~.{}@{:?}", "performance/pt", frametime/self.signal_manager.point_count as f64);
-
-		let mouse = ((2.*(mouse_pos.0/(window_size.0 as f64))-1.) as f32, (1. - 2.*(mouse_pos.1/(window_size.1 as f64))) as f32);
+		// self.debug_perf(frametime);
 
 	    let view_start_x = -1.0 + self.get_axis_width();
 	    let view_start_y = -1.0 + self.get_axis_height() + self.get_cmd_height();
-	    let view_end_x = 1.0 - self.get_log_width() - self.get_ledgend_width() - self.get_axis_width();
+	    let view_end_x = 1.0 - self.get_log_width() - self.get_ledgend_width();
 	    let view_end_y = 1.0 - self.get_axis_height();
 
 	    let area = (view_start_x, view_start_y, view_end_x, view_end_y);
 
+	    if self.selected_sig == None{
+		    if let Some((name, _)) = self.signal_manager.iter().next(){
+		    	self.selected_sig = Some(name.clone());
+		    }
+		}
+
+		if self.selected_sig.is_some(){
+			self.cursor.pos = ((2.*(mouse_pos.0/(window_size.0 as f64))-1.), (1. - 2.*(mouse_pos.1/(window_size.1 as f64))));
+			self.cursor.signal = self.selected_sig.clone();
+		}
+
+
 	    self.signal_manager.draw_signals(target, area);
+
+	    self.draw_cursors(target, area);
 
 	    self.draw_cmdline(target,  area);
 
 	    self.draw_ledgend(target, view_end_x);
 
-	    // self.draw_rect(target, (1.,1.,1.,1.), (mouse.0 as f64, mouse.1 as f64), (0.1,0.1) );
 
-	    for (_, sig) in self.signal_manager.iter(){
-	    	if let Some(pick) = sig.pick(mouse, area){
-	    		let c = sig.get_color();
-	    		let scale = 0.06;
-	    		let pad = 0.01;
-	    		let text = &sig.get_point_string(pick.index);
-	    		let dims = self.draw_text(target, pick.screen_pos.0 as f64 , pick.screen_pos.1 as f64 + scale as f64 * self.text_height as f64/2., scale, (c.0, c.1, c.2, 1.0), text); //TODO: Dont redraw just for size
-	    		self.draw_rect(target, DARK_GREY, (pick.screen_pos.0 as f64 -pad/2., pick.screen_pos.1 as f64 - pad/2.), (dims.0+pad, dims.1+pad));
-			    self.draw_text(target, pick.screen_pos.0 as f64 , pick.screen_pos.1 as f64 + scale as f64 * self.text_height as f64/2., scale, (c.0, c.1, c.2, 1.0), text);
-	    	}
-	    }
+    }
+
+    fn draw_cursors(&mut self, target: &mut Frame, area: (f64, f64, f64, f64)){
+    	self.axis_width = 0.1;
+		let scale = 0.06;
+    	let mut xlables = 0.;
+    	let mut ylables = (scale*self.text_height/2.0) as f64;
+    	let mut theta = 3.14159/2.0f64;
+    	if self.cursor.signal.is_some(){
+    		self.draw_cursor(target, &self.cursor);
+    		let pad = 0.01;
+	    	for (_name, sig) in self.signal_manager.iter(){
+		    	if let Some(pick) = sig.pick((self.cursor.pos.0 as f32, self.cursor.pos.1 as f32), area){
+		    		let c = sig.get_color();
+		    		let color = (c.0, c.1, c.2, 1.0);
+		    		let (xtext, ytext, ztext) = sig.get_point_strings(pick.index);
+		    		let dims = self.get_text_dims(scale, &ztext); 
+				    let sign = if theta.cos() > 0. {-1.} else {1.};
+		    		// let x = pick.screen_pos.0 as f64 + theta.cos()*self.hover_rad;
+		    		// let y = pick.screen_pos.1 as f64 + theta.sin()*self.hover_rad;
+		    		let mut x = self.cursor.pos.0 as f64 + theta.cos()*self.hover_rad;
+		    		if sign > 0.0 {
+		    			x -= self.get_text_dims(scale, &ztext).0;
+		    		}
+		    		let y = self.cursor.pos.1 as f64 + theta.sin()*self.hover_rad;
+		    		self.draw_rect(target, DARK_GREY, (x -pad/2., y - pad/2. - scale as f64 * self.text_height as f64/2.), (dims.0+pad, dims.1+pad));
+				    self.draw_text(target, x, y , scale, color, &ztext);
+
+				    let ny = (self.text_height as f64*scale as f64 + pad)*sign;
+				    let t = theta.sin()*self.hover_rad;
+				    let v = (t+ny)/self.hover_rad;
+				    if v.abs() > 1.0 {
+				    	theta = 3.14159-theta;
+				    } else {
+					    if sign < 0.0{
+						    theta = (v).asin();
+						} else {
+							theta = 3.14159-(v).asin();
+						}
+					}
+
+		    		let (wd, _) = self.draw_text(target, self.cursor.pos.0+pad+xlables, 1.0-self.text_height as f64/2.0*scale as f64, scale, color, &xtext);
+		    		xlables += wd+pad;
+		    		self.axis_width = self.axis_width.max(1.2*self.draw_text(target, -1.0+pad, self.cursor.pos.1+pad+ylables, scale, color, &ytext).0);
+		    		ylables += (self.text_height*scale) as f64 + pad;
+		    	}
+		    }
+			
+			if theta - 3.14159/2.0 < 0.{
+				theta = 2.*3.14159 + theta - 3.14159/2.0f64;
+			} 
+			self.hover_rad += (5.-theta)*0.1;
+			self.hover_rad = self.hover_rad.min(0.4)
+    	}
+    	// Draw second cursor if exists and draw rulers
+    }
+
+    fn draw_cursor(&self, target: &mut Frame, cursor: &DataCursor){
+    	self.draw_rect_px(target, (1.,1.,1.,1.), (cursor.pos.0, -1.), (1, self.window_size.1));
+    	self.draw_rect_px(target, (1.,1.,1.,1.), (-1., cursor.pos.1), (self.window_size.0, 1));
     }
 
     pub fn send_key(&mut self, c: char){
@@ -164,14 +242,14 @@ impl <'a> UI<'a> {
 
     fn draw_ledgend(&mut self, target: &mut Frame, view_end_x: f64){
 		let scale = 0.08;
-		let mut pos = 1.0 - self.get_axis_width();
-		let mut max_width = 0.0f32;
 		let th = self.text_height*scale;
+		let mut pos = 1.0-self.get_axis_height()-th as f64/2.;
+		let mut max_width = 0.0f32;
 		let stat_width = (th*self.resquare()) as f64;
 		// self.draw_rect(target, DARK_GREY, (view_end_x+self.get_axis_width(), len), (self.ledgend_width as f64-0.08, 0.5));
     	for (name, sig) in self.signal_manager.iter(){
 			let c = sig.get_color();
-			let ts = view_end_x+self.get_axis_width()*1.1;
+			let ts = view_end_x+0.05;
 		    self.draw_rect(target, 
 		    	match sig.get_health(){
 		    		SignalHealth::Good => (62.0/256.0, 107.0/256.0, 12.0/256.0, 1.),
@@ -189,15 +267,21 @@ impl <'a> UI<'a> {
     fn draw_rect(&self, target: &mut glium::Frame, color: Color, corner: (f64, f64), dims: (f64, f64)){
     	let pxx = self.window_size.0 as f64 / 2.0;
     	let pxy = self.window_size.1 as f64 / 2.0;
-    	let cornerx = (self.window_size.0/2) as i32 + (pxx*corner.0) as i32;
-    	let cornery = (self.window_size.1/2) as i32 + (pxy*corner.1) as i32;
     	let width = (dims.0*pxx) as u32;
     	let height = (dims.1*pxy) as u32;
+    	self.draw_rect_px(target, color, corner, (width, height))
+    }
+
+    fn draw_rect_px(&self, target: &mut glium::Frame, color: Color, corner: (f64, f64), dims: (u32, u32)){
+    	let pxx = self.window_size.0 as f64 / 2.0;
+    	let pxy = self.window_size.1 as f64 / 2.0;
+    	let cornerx = (self.window_size.0/2) as i32 + (pxx*corner.0) as i32;
+    	let cornery = (self.window_size.1/2) as i32 + (pxy*corner.1) as i32;
     	target.clear(Some(&Rect{
     		left: cornerx as u32,
     		bottom: cornery as u32,
-    		width: width,
-    		height: height,
+    		width: dims.0,
+    		height: dims.1,
     	}), Some(color), false, None, None);
     }
 
@@ -228,7 +312,7 @@ impl <'a> UI<'a> {
     }
 
     fn get_axis_width(&self) -> f64{
-    	0.08
+    	self.axis_width
     }
 
     fn get_axis_height(&self) -> f64{
@@ -237,6 +321,12 @@ impl <'a> UI<'a> {
 
     fn resquare(&self) -> f32 {
     	(self.window_size.1 as f32 / self.window_size.0 as f32)
+    }
+
+    fn debug_perf(&self, frametime: f64){
+    	println!("~.{}@{:?}", "frametime", frametime);
+    	println!("~.{}@{:?}", "points", self.signal_manager.point_count);
+    	println!("~.{}@{:?}", "performance/pt", frametime/self.signal_manager.point_count as f64);
     }
 
 }
