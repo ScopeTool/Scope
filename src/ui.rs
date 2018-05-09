@@ -107,14 +107,15 @@ impl <'a> UI<'a> {
     }
 
     fn draw_cursors(&mut self, target: &mut Frame, area: (f64, f64, f64, f64)){
-    	self.axis_width = 0.1;
 		let scale = 0.06;
     	let mut xlables = 0.;
     	let mut ylables = (scale*self.text_height/2.0) as f64;
-    	let mut theta = 3.14159/2.0f64;
+    	let itheta = 3.14159/2.0f64;
+    	let mut theta = itheta;
     	if self.cursor.signal.is_some(){
     		self.draw_cursor(target, &self.cursor);
     		let pad = 0.01;
+	    	let mut axis_width = 0.1f64;
 	    	for (_name, sig) in self.signal_manager.iter(){
 		    	if let Some(pick) = sig.pick((self.cursor.pos.0 as f32, self.cursor.pos.1 as f32), area){
 		    		let c = sig.get_color();
@@ -132,31 +133,38 @@ impl <'a> UI<'a> {
 		    		self.draw_rect(target, DARK_GREY, (x -pad/2., y - pad/2. - scale as f64 * self.text_height as f64/2.), (dims.0+pad, dims.1+pad));
 				    self.draw_text(target, x, y , scale, color, &ztext);
 
-				    let ny = (self.text_height as f64*scale as f64 + pad)*sign;
-				    let t = theta.sin()*self.hover_rad;
-				    let v = (t+ny)/self.hover_rad;
-				    if v.abs() > 1.0 {
-				    	theta = 3.14159-theta;
-				    } else {
-					    if sign < 0.0{
-						    theta = (v).asin();
-						} else {
-							theta = 3.14159-(v).asin();
-						}
-					}
 
-		    		let (wd, _) = self.draw_text(target, self.cursor.pos.0+pad+xlables, 1.0-self.text_height as f64/2.0*scale as f64, scale, color, &xtext);
+				    let dy = (self.text_height as f64*scale as f64 + pad)*sign; // height of textbox
+			       	let ny = theta.sin()*self.hover_rad + dy; // next height around circle
+			       	let c2 = self.hover_rad.powf(2.);
+			       	let a2 = ny.powf(2.);
+			       	if c2 > a2{ // if point can be on circle 
+				       	let nx = (c2 - a2).sqrt()*sign*-1.0; // find next x position that corresponds to desired y on circle
+				       	theta = ny.atan2(nx); // get corresponding angle
+			       	}else {
+			       		theta = -3.14159/2. - (3.14159/2. - theta.abs()); // jump to other side of circle
+			        }
+
+		    		let mut wd = self.draw_text(target, self.cursor.pos.0+pad+xlables, 1.0-self.text_height as f64/2.0*scale as f64, scale, color, &xtext).0;
 		    		xlables += wd+pad;
-		    		self.axis_width = self.axis_width.max(1.2*self.draw_text(target, -1.0+pad, self.cursor.pos.1+pad+ylables, scale, color, &ytext).0);
+		    		wd = 1.2*self.draw_text(target, -1.0+pad, self.cursor.pos.1+pad+ylables, scale, color, &ytext).0;
+		    		axis_width = axis_width.max(wd);
 		    		ylables += (self.text_height*scale) as f64 + pad;
 		    	}
 		    }
+
+    		self.axis_width = self.axis_width*0.9 + 0.1*axis_width;
 			
-			if theta - 3.14159/2.0 < 0.{
-				theta = 2.*3.14159 + theta - 3.14159/2.0f64;
-			} 
-			self.hover_rad += (5.-theta)*0.1;
-			self.hover_rad = self.hover_rad.min(0.4)
+			theta -= itheta; // theta relative to initial pos
+			if theta > 0.{ // clamp to negative range
+				theta -= 2.*3.14159;
+			}
+			let target = -3.14159/2.; // set our target angle to be 90 deg
+			theta  =  target - theta; // find distance to target
+
+			self.hover_rad += (theta)*0.08; // proportional control
+			self.hover_rad = self.hover_rad.min(0.6);
+			self.hover_rad = self.hover_rad.max(0.0001);
     	}
     	// Draw second cursor if exists and draw rulers
     }
@@ -167,7 +175,7 @@ impl <'a> UI<'a> {
     }
 
     pub fn send_key(&mut self, c: char){
-    	if c != '\t'{
+    	if c != '\t' &&  c != '\r'{
 	    	let run = self.editor.send_key(c);
 			self.update_editor(run);
 		}
@@ -188,7 +196,8 @@ impl <'a> UI<'a> {
 				    	//TODO: there has to be a better way to do this
 				    }, 
 				    VKC::Return => if input.modifiers.shift && self.cmdline_completions.len() > 0 { 
-				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len() 
+				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len();
+				    	println!("{:?}", self.completion_idx);
 				    }
 				    _ => ()
 				}
