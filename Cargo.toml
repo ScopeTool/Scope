@@ -15,4 +15,3 @@ crossbeam-channel = "0.1"
 
 color_set = { path = "color_set" }
 glimput = {path = "glimput"}
-command_parse = {path = "command_parse"}

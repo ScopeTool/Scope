@@ -12,14 +12,11 @@ impl Editor{
 	pub fn new() -> Editor{
 		Editor{buffer: String::from("~"), cursor: 1}
 	}
-	pub fn send_key(&mut self, c: char) -> bool{
-		let mut ret = false;
+	pub fn send_key(&mut self, c: char){
 		match c{
 			'\u{8}' => if self.cursor > 1 && self.cursor <= self.buffer.len() {self.buffer.remove(self.cursor-1); self.cursor -=1;},
-			'\r' => {ret = true},
 			_ => {self.buffer.insert(self.cursor, c); self.cursor+=1},
 		};
-		return ret;
 	}
 
 

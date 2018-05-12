@@ -31,43 +31,48 @@ def log(chan, *args):
 # 	sys.stdout.flush()
 # 	# sleep(0.08)
 
-# sleep(1)
-# r = .999
-# divs = 64/4 + 3
-# step = r/divs
-# for x in xrange(divs): 
-# 	log("A", 1*r, 1*r)
-# 	log("A", 1*r, -1*r)
-# 	log("A", -1*r, -1*r)
-# 	log("A", -1*r, 1*r)
-# 	r -= step
-# 	sys.stdout.flush()
-# 	# sleep(.5)
+sleep(1)
+r = .999
+divs = 64/4 + 3
+step = r/divs
+for x in xrange(divs): 
+	log("A", 1*r, 1*r)
+	log("A", 1*r, -1*r)
+	log("A", -1*r, -1*r)
+	log("A", -1*r, 1*r)
 
-divs = 100
-step = 2.0/divs
-sigs = "abcdefghij"
-maxx = 0
-maxy = 0
-for s in sigs:
-	log(s, 0, -2)
-for i in xrange(divs): 
-	pos = 0
-	for s in sigs:
-		x = i*step
-		if x > 2.0*(pos/float(len(sigs))):
-			sin = 1#2*(pos % 2)-1
-			y = sin*(x - 2.0*(pos/float(len(sigs))))
-		else:
-			y = 0
-		log(s, x, y)
-		pos += 1
-		if x > maxx:
-			maxx = x
-		if y > maxy:
-			maxy = y
-for s in sigs:
-	log(s, maxx, maxy)
+	log("B", 1*r, 1*r)
+	log("B", 1*r, -1*r)
+	log("B", -1*r, -1*r)
+	log("B", -1*r, 1*r)
+	r -= step
+	sys.stdout.flush()
+	# sleep(.5)
+
+# divs = 100
+# step = 2.0/divs
+# sigs = "abcdefghij"
+# maxx = 0
+# maxy = 0
+# for s in sigs:
+# 	log(s, 0, -2)
+# for i in xrange(divs): 
+# 	pos = 0
+# 	for s in sigs:
+# 		x = i*step
+# 		if x > 2.0*(pos/float(len(sigs))):
+# 			sin = 1#2*(pos % 2)-1
+# 			y = sin*(x - 2.0*(pos/float(len(sigs))))
+# 		else:
+# 			y = 0
+# 		log(s, x, y)
+# 		pos += 1
+# 		if x > maxx:
+# 			maxx = x
+# 		if y > maxy:
+# 			maxy = y
+# for s in sigs:
+# 	log(s, maxx, maxy)
 
 
 # divs = 100

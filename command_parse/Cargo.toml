@@ -1,7 +1,0 @@
-[package]
-name = "command_parse"
-version = "0.1.0"
-authors = ["rademonster <sorenrade@gmail.com>"]
-
-[dependencies]
-distance = "0.4"

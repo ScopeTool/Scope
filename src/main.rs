@@ -24,6 +24,7 @@ use clap::{App};
 pub mod signal;
 pub mod drawstyles;
 pub mod ui;
+pub mod command_parse;
 
 use signal::{MsgPoint as Point, PointType};
 use signal::SignalManager;

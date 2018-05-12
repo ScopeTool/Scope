@@ -3,8 +3,9 @@ extern crate glium_text_rusttype as glium_text;
 extern crate distance;
 use self::distance::damerau_levenshtein as fuzzy_dist; 
 
-extern crate command_parse;
+use command_parse;
 
+use std::f64::consts::PI;
 use std::{
 	rc::Rc,
 	cell::RefCell,
@@ -110,12 +111,22 @@ impl <'a> UI<'a> {
 		let scale = 0.06;
     	let mut xlables = 0.;
     	let mut ylables = (scale*self.text_height/2.0) as f64;
-    	let itheta = 3.14159/2.0f64;
-    	let mut theta = itheta;
+
+    	// let corners = vec![(area.0, area.1, (0.,1.)), (area.2, area.1, (-1.,0.)), (area.2, area.3, (0.,-1.)), (area.0, area.3, (1., 0.))];
+    	// let av = corners.iter().fold((0., 1.), |acc, &pt|{
+    	// 	let a = (pt.0 - self.cursor.pos.0).powf(2.);
+    	// 	let b = (pt.1 - self.cursor.pos.1).powf(2.);
+    	// 	let d = (a + b).sqrt() / ((area.2 - area.0).powf(2.) + (area.3-area.1).powf(2.)).sqrt();
+    	// 	let w = 3.*d.powf(2.) - 2.*d.powf(3.);
+    	// 	(acc.0 + (pt.2).0*w, acc.1 + (pt.2).1*w)
+    	// });
+    	// let itheta = PI+ 0.75*PI;//av.1.atan2(av.0);
+		let itheta = PI/2.0;
+    	let mut theta: f64 = itheta;
     	if self.cursor.signal.is_some(){
     		self.draw_cursor(target, &self.cursor);
     		let pad = 0.01;
-	    	let mut axis_width = 0.1f64;
+	    	let mut axis_width = 0.125f64;
 	    	for (_name, sig) in self.signal_manager.iter(){
 		    	if let Some(pick) = sig.pick((self.cursor.pos.0 as f32, self.cursor.pos.1 as f32), area){
 		    		let c = sig.get_color();
@@ -142,7 +153,7 @@ impl <'a> UI<'a> {
 				       	let nx = (c2 - a2).sqrt()*sign*-1.0; // find next x position that corresponds to desired y on circle
 				       	theta = ny.atan2(nx); // get corresponding angle
 			       	}else {
-			       		theta = -3.14159/2. - (3.14159/2. - theta.abs()); // jump to other side of circle
+			       		theta = -PI/2. - (PI/2. - theta.abs()); // jump to other side of circle
 			        }
 
 		    		let mut wd = self.draw_text(target, self.cursor.pos.0+pad+xlables, 1.0-self.text_height as f64/2.0*scale as f64, scale, color, &xtext).0;
@@ -157,9 +168,9 @@ impl <'a> UI<'a> {
 			
 			theta -= itheta; // theta relative to initial pos
 			if theta > 0.{ // clamp to negative range
-				theta -= 2.*3.14159;
+				theta -= 2.*PI;
 			}
-			let target = -3.14159/2.; // set our target angle to be 90 deg
+			let target = -PI/2.; // set our target angle to be 90 deg
 			theta  =  target - theta; // find distance to target
 
 			self.hover_rad += (theta)*0.08; // proportional control
@@ -176,8 +187,8 @@ impl <'a> UI<'a> {
 
     pub fn send_key(&mut self, c: char){
     	if c != '\t' &&  c != '\r'{
-	    	let run = self.editor.send_key(c);
-			self.update_editor(run);
+	    	self.editor.send_key(c);
+			self.update_editor();
 		}
     }
 
@@ -195,9 +206,16 @@ impl <'a> UI<'a> {
 				    	}
 				    	//TODO: there has to be a better way to do this
 				    }, 
-				    VKC::Return => if input.modifiers.shift && self.cmdline_completions.len() > 0 { 
+				    VKC::Return if input.modifiers.shift && self.cmdline_completions.len() > 0 => { 
 				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len();
-				    	println!("{:?}", self.completion_idx);
+				    }
+				    VKC::Return => { 
+				    	let rslt = command_parse::parse(self.editor.get_buffer(), true, &mut self.signal_manager);
+				    	if rslt.valid{
+				    		self.editor.clear();
+				    		self.cmdline_completions.clear();
+				    		self.completion_idx = 0;
+				    	}
 				    }
 				    _ => ()
 				}
@@ -206,11 +224,8 @@ impl <'a> UI<'a> {
 		self.editor.send_event(input);
     }
 
-    fn update_editor(&mut self, run: bool){
-    	let rslt = command_parse::parse(self.editor.get_buffer(), run);
-    	if rslt.valid && run{
-    		self.editor.clear();
-    	}
+    fn update_editor(&mut self){
+    	let rslt = command_parse::parse(self.editor.get_buffer(), false, &mut self.signal_manager);
     	self.cmdline_completions = rslt.possible_completions;
     	let current_term = &self.editor.get_working_term();
     	self.cmdline_completions.sort_by(|s1, s2|{

@@ -1,4 +1,6 @@
 // get suggestions given current buffer state, and parse buffer and set state
+use signal::SignalManager;
+
 
 pub struct LineState{
 	pub valid: bool,
@@ -7,7 +9,7 @@ pub struct LineState{
 
 
 
-pub fn parse(line: &str, run: bool) -> LineState {
+pub fn parse(line: &str, run: bool, manager: &mut SignalManager) -> LineState {
     let mut valid = false;
     let mut possible_completions = Vec::<String>::new();
 	if line.len() > 1 {
@@ -15,7 +17,7 @@ pub fn parse(line: &str, run: bool) -> LineState {
 	    valid = true;
 
 	    match cmd{
-	    	"ds"|"drawstyle" => drawstyle(line, run, &mut valid, &mut possible_completions),
+	    	"ds"|"drawstyle" => drawstyle(line, run, &mut valid, &mut possible_completions, manager),
 	    	&_ => if run {println!("Invalid Command: {:?}", cmd)} else {possible_completions.push(String::from("drawstyle"))}
 	    }
 	}
@@ -23,12 +25,12 @@ pub fn parse(line: &str, run: bool) -> LineState {
 }
 
 
-fn drawstyle(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>) {
+fn drawstyle(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, _manager: &mut SignalManager) {
 	let bits = cmd.split_whitespace().collect::<Vec<&str>>();
 	if bits.len() > 1{
 		match bits[1]{
-			"scatter" => if run {println!("scatter")},
-			"lines" => if run {println!("lines")},
+			"scatter" => if run {},
+			"lines" => if run {},
 			&_ => {
 				*valid = false;
 				pc.push(String::from("scatter")); pc.push(String::from("lines"));
