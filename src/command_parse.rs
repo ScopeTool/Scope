@@ -1,5 +1,6 @@
 // get suggestions given current buffer state, and parse buffer and set state
 use signal::SignalManager;
+use drawstyles::*;
 
 
 pub struct LineState{
@@ -25,16 +26,66 @@ pub fn parse(line: &str, run: bool, manager: &mut SignalManager) -> LineState {
 }
 
 
-fn drawstyle(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, _manager: &mut SignalManager) {
+fn drawstyle(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &mut SignalManager) {
 	let bits = cmd.split_whitespace().collect::<Vec<&str>>();
+	let mut t = Styles::Scatter;
 	if bits.len() > 1{
 		match bits[1]{
-			"scatter" => if run {},
-			"lines" => if run {},
+			"scatter" => t = Styles::Scatter,
+			"lines" => t = Styles::Lines,
 			&_ => {
 				*valid = false;
 				pc.push(String::from("scatter")); pc.push(String::from("lines"));
+				return;
 			} 
 		}
 	}
+	// println!("{:?}", bits);
+	let sigs = select_signals( if bits.len() > 2 {&bits[2..]} else {&[]}, 
+		valid, pc, manager);
+	// println!("1 {:?}", *valid);
+	if !*valid{
+		return;
+	}
+	// println!("Selected: {:?}", sigs);
+	if run{
+		for s in sigs{
+			manager.get_signal(&s).expect("This vec can only consist of clones of the key strings from the signals map").set_style(&t);
+			println!("Set {:?} to {:?}", s, t);
+		}
+	}
+}
+
+//TODO: take pc and provide 
+fn select_signals(bits: &[&str], _valid: &mut bool, pc: &mut Vec<String>, man: &SignalManager) -> Vec<String>{
+	// println!("sig select: {:?}", bits);
+	let mut rslt = Vec::new();
+	// let bits = s.split_whitespace().collect::<Vec<&str>>();
+	let mut inverse = false;
+	if bits.len() == 0{
+		inverse = true;
+	}else if bits.len() > 0 {
+		if bits[0] == "!"{
+			inverse = true;
+		}
+	}
+	//TODO: catch misspellings and change validitity
+	// println!("inverse {:?}", inverse);
+	for name in man.get_names(){
+		let mut good = inverse;
+		for arg in bits{
+			// println!("{:?} == {:?}", name, arg);
+			if arg == name{
+				good = !good;
+				break;
+			}
+		}
+		if bits.len() > 0{
+			pc.push(name.clone());
+		}
+		if good{
+			rslt.push(name.clone());
+		}
+	}
+	return rslt;
 }

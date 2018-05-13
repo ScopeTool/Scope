@@ -267,10 +267,10 @@ impl <'a> UI<'a> {
     fn draw_ledgend(&mut self, target: &mut Frame, view_end_x: f64){
 		let scale = 0.08;
 		let th = self.text_height*scale;
-		let mut pos = 1.0-self.get_axis_height()-th as f64/2.;
+		let mut pos = 1.0-self.get_axis_height()-th as f64;
 		let mut max_width = 0.0f32;
 		let stat_width = (th*self.resquare()) as f64;
-		// self.draw_rect(target, DARK_GREY, (view_end_x+self.get_axis_width(), len), (self.ledgend_width as f64-0.08, 0.5));
+		self.draw_rect(target, DARK_GREY, (view_end_x+0.04, 1.0 - self.get_axis_height() - th as f64 *self.signal_manager.len() as f64 -0.01), (self.ledgend_width as f64 - 0.06, th as f64 *self.signal_manager.len() as f64 +0.02));
     	for (name, sig) in self.signal_manager.iter(){
 			let c = sig.get_color();
 			let ts = view_end_x+0.05;

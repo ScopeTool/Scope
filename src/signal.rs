@@ -159,6 +159,9 @@ impl <A> RangedDeque<A> where
 	pub fn get(&self, idx: usize) -> &Point<A>{
 		&self.points[idx]
 	}
+	pub fn len(&self) -> usize{
+		self.points.len()
+	}
 	#[allow(dead_code)]
 	fn pop(&mut self){
 		//TODO: Recompute range if popped val matches range
@@ -211,6 +214,10 @@ impl <'a, T> Signal<'a, T>
 			sx: xs as f32, sy: ys as f32, sz: 1.0
 		}
 	}
+	fn add_ds_point(&mut self, pt: &Point<T>){
+		//TODO:  Do unit scaling here before pass to drawstyle
+		self.style.push(&pt, &self.color, &self.points, self.display);
+	}
 }
 
 pub trait GenericSignal {
@@ -220,6 +227,7 @@ pub trait GenericSignal {
     fn get_health(&self) -> SignalHealth;
     fn pick(&self, mouse: (f32, f32), area: Rect)->Option<PickData>;
     fn get_point_strings(&self, idx: usize) -> (String, String, String);
+    fn set_style(&mut self, style: &Styles);
 }
 
 impl <'a, T> GenericSignal for Signal<'a, T>
@@ -233,10 +241,10 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	}
 	fn add_point(&mut self, point: MsgPoint){
 		let pt = T::into(point);
-		// Do unit scaling here before pass to drawstyle
 		self.points.push(pt.clone());
-		self.style.push(&pt, &self.color, &self.points, self.display);
+		self.add_ds_point(&pt);
 	}
+
 	fn pick(&self, mouse: (f32, f32), area: Rect) -> Option<PickData>{
 		self.style.pick( &self.points, mouse, self.get_transform(area), self.unit_scale.clone(), self.pick_thresh)
 	}
@@ -248,6 +256,17 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	}
 	fn get_point_strings(&self, idx: usize) -> (String, String, String){
 		self.style.get_point_strs(self.points.get(idx))
+	}
+	fn set_style(&mut self, style: &Styles){
+		//TODO: full vbo construction
+		self.style = match style{
+			Styles::Scatter => Box::new(Scatter::new(self.display)),
+			Styles::Lines => Box::new(Lines::new(self.display))
+		};
+		for i in 0..self.points.len(){
+			let a = self.points.get(i).clone(); //TODO: gotta be a better way
+			self.add_ds_point(&a);
+		}
 	}
 }
 
@@ -311,6 +330,18 @@ impl <'a> SignalManager<'a>{
 	pub fn iter(&self) -> std::collections::hash_map::Iter<String, Box<GenericSignal + 'a>>{
 		self.signals.iter()
 	}
+
+	pub fn get_names(&self) -> impl Iterator<Item = &String>{
+		self.signals.keys()
+	}
+	pub fn get_signal(&mut self, name: &str) -> Option<&mut Box<GenericSignal+'a>>{
+		self.signals.get_mut(name)
+	}
+ 
+	pub fn len(&self) -> usize{
+		self.signals.len()
+	}
+
 }
 
 

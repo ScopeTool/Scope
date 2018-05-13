@@ -153,6 +153,11 @@ fn get_std_pt_strs<T>(pt: &Point<T>, xidx: usize) -> (String, String, String)
 	)
 }
 
+#[derive(Debug)]
+pub enum Styles{
+	Scatter, 
+	Lines
+}
 
 pub trait DrawStyle<T> {
 	fn push(&mut self, pt: &Point<T>, color: &Color, points:&RangedDeque<T>, display: &glium::Display);
