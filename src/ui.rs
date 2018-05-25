@@ -47,7 +47,6 @@ pub struct UI<'a> {
 	text_format: RefCell<glium_text::TextDisplay<Rc<glium_text::FontTexture>>>,
 	cmdline_completions: Vec<String>,
 	completion_idx: usize,
-	selected_sig: Option<String>,
 	cursor: DataCursor, hover_rad: f64, 
 	cursor2: Option<DataCursor>
 }
@@ -67,7 +66,6 @@ impl <'a> UI<'a> {
     	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
     		axis_width: 0.,
     		cmdline_completions: Vec::new(), completion_idx: 0,
-    		selected_sig: None,
     		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.1, 
     	}
     }
@@ -84,15 +82,19 @@ impl <'a> UI<'a> {
 
 	    let area = (view_start_x, view_start_y, view_end_x, view_end_y);
 
-	    if self.selected_sig == None{
-		    if let Some((name, _)) = self.signal_manager.iter().next(){
-		    	self.selected_sig = Some(name.clone());
-		    }
+	    let mut sel = self.signal_manager.get_selection().clone();
+	    if sel.is_none(){
+		    sel = if let Some((name, _)) = self.signal_manager.iter().next(){
+		    	Some(name.to_string())
+		    } else {
+		    	None
+		    };
+	    	self.signal_manager.set_selection(sel.clone());
 		}
 
-		if self.selected_sig.is_some(){
+		if sel.is_some(){
 			self.cursor.pos = ((2.*(mouse_pos.0/(window_size.0 as f64))-1.), (1. - 2.*(mouse_pos.1/(window_size.1 as f64))));
-			self.cursor.signal = self.selected_sig.clone();
+			self.cursor.signal = sel;
 		}
 
 
@@ -224,6 +226,17 @@ impl <'a> UI<'a> {
 		self.editor.send_event(input);
     }
 
+    pub fn send_mouse(&mut self, event: glium::glutin::WindowEvent){
+    	if let glium::glutin::WindowEvent::MouseWheel{delta, phase: _, modifiers: _, ..} = event{
+    		if let Some(sig) = self.signal_manager.get_selected(){
+				if let glium::glutin::MouseScrollDelta::LineDelta(_, y) = delta{
+					// println!("Mouse delta{:?}", y);
+					sig.zoom_by(y.into());
+				}
+			}
+    	}
+    }
+
     fn update_editor(&mut self){
     	let rslt = command_parse::parse(self.editor.get_buffer(), false, &mut self.signal_manager);
     	self.cmdline_completions = rslt.possible_completions;
@@ -271,9 +284,13 @@ impl <'a> UI<'a> {
 		let mut max_width = 0.0f32;
 		let stat_width = (th*self.resquare()) as f64;
 		self.draw_rect(target, DARK_GREY, (view_end_x+0.04, 1.0 - self.get_axis_height() - th as f64 *self.signal_manager.len() as f64 -0.01), (self.ledgend_width as f64 - 0.06, th as f64 *self.signal_manager.len() as f64 +0.02));
+		let sel = self.signal_manager.get_selection().clone();
     	for (name, sig) in self.signal_manager.iter(){
 			let c = sig.get_color();
 			let ts = view_end_x+0.05;
+			if let Some(ref n) = sel{ if n == name { //TODO: is there a cleaner way?
+				self.draw_rect(target, (1., 1., 1., 1.), (ts as f64 - stat_width*0.18, pos as f64), (stat_width*0.18, th as f64));
+			}}
 		    self.draw_rect(target, 
 		    	match sig.get_health(){
 		    		SignalHealth::Good => (62.0/256.0, 107.0/256.0, 12.0/256.0, 1.),

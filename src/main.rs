@@ -104,6 +104,7 @@ fn main(){
 	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
 	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
 	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
+	                glutin::WindowEvent::MouseWheel{..} => ui.send_mouse(event),
 	                glutin::WindowEvent::KeyboardInput{input, ..}  => {ui.send_event(input)},
 	                glutin::WindowEvent::ReceivedCharacter(c) => ui.send_key(c),
 	                _ => (),

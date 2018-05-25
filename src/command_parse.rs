@@ -19,10 +19,30 @@ pub fn parse(line: &str, run: bool, manager: &mut SignalManager) -> LineState {
 
 	    match cmd{
 	    	"ds"|"drawstyle" => drawstyle(line, run, &mut valid, &mut possible_completions, manager),
-	    	&_ => if run {println!("Invalid Command: {:?}", cmd)} else {possible_completions.push(String::from("drawstyle"))}
+	    	"s"|"select" => select(line, run, &mut valid, &mut possible_completions, manager),
+	    	"b"|"bind" => bind(line, run, &mut valid, &mut possible_completions, manager),
+	    	&_ => if run {println!("Invalid Command: {:?}", cmd)} else {possible_completions.push(String::from("drawstyle"));
+	    																possible_completions.push(String::from("select"));
+	    																possible_completions.push(String::from("bind"))
+	    															}
 	    }
 	}
     LineState{valid, possible_completions}
+}
+
+fn select(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &mut SignalManager){
+	let bits = cmd.split_whitespace().collect::<Vec<&str>>();
+	let sigs = select_signals( if bits.len() > 1 {&bits[1..]} else {&[]}, 
+		valid, pc, manager);
+	if !*valid{
+		return;
+	}
+	if run{
+		for s in sigs{
+			println!("Requested Selection: {:?}", s);
+			manager.set_selection(Some(s));
+		}
+	}
 }
 
 
@@ -54,6 +74,45 @@ fn drawstyle(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manag
 			println!("Set {:?} to {:?}", s, t);
 		}
 	}
+}
+
+fn bind(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &mut SignalManager){
+	let bits = cmd.split_whitespace().collect::<Vec<&str>>();
+	let mut mode = 0;
+	if bits.len() > 1{
+		for c in bits[1].chars(){
+			mode |= match c{
+				'_' => 0,
+				'x' => 0b0010,
+				'y' => 0b0100,
+				'z' => 0b1000,
+				_ => {
+					*valid = false;
+					pc.push(String::from("x")); pc.push(String::from("y")); pc.push(String::from("xy")); pc.push(String::from("xyz"));
+					return;
+				}
+			}
+		}
+	}
+
+	let signals = select_signals( if bits.len() > 2 {&bits[2..]} else {&[]}, 
+		valid, pc, manager);
+	if !*valid{
+		return;
+	}
+
+	if run{
+		println!("Bind mode: {:?}", mode);
+		let mut sigs = signals.iter();
+		if signals.len() > 1{
+			let base = sigs.next().expect("signals > 1 .'. next yields some");
+			manager.get_signal(base).expect("This vec can only consist of clones of the key strings from the signals map").set_bind_mode(mode);
+			for i in sigs{
+				manager.bind(base, i);
+			}
+		}
+	}
+
 }
 
 //TODO: take pc and provide 

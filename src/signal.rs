@@ -1,5 +1,7 @@
 extern crate glium;
 extern crate color_set;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 use std;
 use std::f64::NAN;
 // use std::mem::size_of;
@@ -114,10 +116,31 @@ impl <A> Point<A>{
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug,  Clone)]
 pub struct Range{
     pub min: Vec<f64>, //minimums on x y and z
     pub max: Vec<f64>
+}
+impl Range{
+	fn new() -> Range{
+		Range{min: Vec::new(), max: Vec::new()}
+	}
+	fn expandby(&mut self, other: &Range){
+		let mut new_min = Vec::new();//TODO: dont do these tiny heap allocations every frame
+		for i in 0..self.min.len().max(other.min.len()){
+			let mut a = if i < other.min.len() {other.min[i]} else {NAN};
+			let mut b = if i < self.min.len() {self.min[i]} else {NAN};
+			new_min.push(a.min(b));
+		}
+		let mut new_max = Vec::new();
+		for i in 0..self.max.len().max(other.max.len()){
+			let mut a = if i < other.max.len() {other.max[i]} else {NAN};
+			let mut b = if i < self.max.len() {self.max[i]} else {NAN};
+			new_max.push(a.max(b));
+		}
+		self.min = new_min;
+		self.max = new_max;
+	}
 }
 
 //This class supports constant time fifo buffer, and tracks minimums and maximum values
@@ -138,17 +161,20 @@ impl <A> RangedDeque<A> where
 	}
 	fn push(&mut self, pt: Point<A>) -> bool{
 		//TODO: recompupte range
+		// println!("{:?}", (pt.axes[0].clone().into(), pt.axes[1].clone().into()));
 		let mut range_update = false;
 		for i in 0..A::size(){
 			let t = pt.axes[i].clone().into();
 			if self.range.min[i] > t || self.range.min[i].is_nan(){ 
 				self.range.min[i] = t;
 				range_update = true;
-			} else if self.range.max[i] < t || self.range.max[i].is_nan(){
+			}
+			if self.range.max[i] < t || self.range.max[i].is_nan(){
 				self.range.max[i] = t;
 				range_update = true;
 			}
 		}
+		// println!("{:?}", self.range);
 		// println!("{:#?}", self.range);
 		self.points.push_back(pt);
 		return range_update;
@@ -175,6 +201,84 @@ impl <A> RangedDeque<A> where
 	}
 }
 
+
+#[derive(Debug,  Clone)]
+struct ViewData{
+	pos: (f32, f32),
+    zoom: f64,
+    range: Range,
+    maintain_aspect: bool,
+    mode: u8,
+    id: String
+}
+impl ViewData{
+	fn clear_range(&mut self){
+	    self.range.min = vec![NAN; self.range.min.len()];
+		self.range.max = vec![NAN; self.range.max.len()];
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct View {
+    data: Rc<RefCell<ViewData>>,
+}
+impl View {
+    fn new(name: String) -> View{
+    	let data = Rc::new(RefCell::new(ViewData{pos: (0.,0.), 
+    		zoom: 1., 
+    		range: Range::new(), 
+    		maintain_aspect: false, 
+    		mode: 0,
+    		id: name
+    	}));
+    	View{data}
+    }
+
+    fn share(&self, range: &Range){
+    	let mut data = self.data.borrow_mut();
+    	data.range.expandby(range);
+    }
+
+    fn get_transform(&self, area: Rect, range: &Range) -> Transform{
+    	let data = self.data.borrow();
+
+    	let mut working_range = if 0b10 & data.mode != 0{&data.range} else {range};
+    	let xmin = working_range.min[0];
+    	let xmax = working_range.max[0];
+    	working_range = if 0b100 & data.mode != 0{&data.range} else {range};
+    	let ymin = working_range.min[1];
+    	let ymax = working_range.max[1];
+
+    	// println!("Working Range: x: ({:?}, {:?}), y: ({:?}, {:?})", xmin, xmax, ymin, ymax);
+
+    	let mut xs = ((area.2-area.0)/(xmax-xmin)).max(MIN_SCALE);
+		let mut ys = ((area.3-area.1)/(ymax-ymin)).max(MIN_SCALE); 
+
+		if data.maintain_aspect{
+			let val = if (1.-xs).abs() > (1.-ys).abs() {xs} else {ys};
+			xs = val; ys = val;
+		}
+
+		xs *= data.zoom;
+		ys *= data.zoom;
+
+		Transform{
+			dx: (area.2-xmax*xs) as f32, dy: ((-ys*(ymax+ymin)/2.)+(area.3+area.1)/2.0) as f32,
+			sx: xs as f32, sy: ys as f32, sz: 1.0
+		}
+	}
+
+	fn zoom(&self, by: f64){
+		let mut data = self.data.borrow_mut();
+		data.zoom += by/10.;
+		data.zoom = data.zoom.max(MIN_SCALE)
+	}
+
+    fn set_bind_mode(&self, mode: u8){
+    	self.data.borrow_mut().mode = mode;
+    }
+}
+
 struct Signal<'a, A> {
     name: String,
     color: Color,
@@ -182,6 +286,7 @@ struct Signal<'a, A> {
     points: RangedDeque<A>,
     style: Box<DrawStyle<A>>,
     health: SignalHealth,
+    view: View,
     pick_thresh: f32,
     display: &'a glium::Display
 }
@@ -189,14 +294,15 @@ struct Signal<'a, A> {
 impl <'a, T> Signal<'a, T>
 	where T: Axes<T> + Clone + std::ops::Index<usize>,
 	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
-	fn new(name: String, style: Box<DrawStyle<T>>,  display: &'a glium::Display) -> Signal<'a,T>{
+	fn new(name: String, style: Box<DrawStyle<T>>,  view: View, display: &'a glium::Display) -> Signal<'a,T>{
 		Signal{	
 				name: name.clone(), 
-				color: Generator::get_color(name, 0.8, 1.),
+				color: Generator::get_color(name.clone(), 0.8, 1.),
 				unit_scale: T::ones().as_vec(), 
 				points: RangedDeque::new(), 
 				style,
 				health: SignalHealth::Good,
+				view,
 				pick_thresh: 0.1,
 				display
 			}
@@ -205,14 +311,7 @@ impl <'a, T> Signal<'a, T>
 		
 		let range = self.style.get_range(&self.points); // this range in xy view space
 
-		let xs = ((area.2-area.0)/(range.max[0]-range.min[0])).max(MIN_SCALE);
-
-		let ys = ((area.3-area.1)/(range.max[1]-range.min[1])).max(MIN_SCALE);
-
-		Transform{
-			dx: (area.2-range.max[0]*xs) as f32, dy: ((-ys*(range.max[1]+range.min[1])/2.)+(area.3+area.1)/2.0) as f32,
-			sx: xs as f32, sy: ys as f32, sz: 1.0
-		}
+		self.view.get_transform(area, &range)
 	}
 	fn add_ds_point(&mut self, pt: &Point<T>){
 		//TODO:  Do unit scaling here before pass to drawstyle
@@ -228,13 +327,16 @@ pub trait GenericSignal {
     fn pick(&self, mouse: (f32, f32), area: Rect)->Option<PickData>;
     fn get_point_strings(&self, idx: usize) -> (String, String, String);
     fn set_style(&mut self, style: &Styles);
+    fn set_bind_mode(&self, mode: u8);
+    fn get_view(&mut self) -> &mut View;
+    fn share_view(&self);
+    fn zoom_by(&self, by: f64);
 }
 
 impl <'a, T> GenericSignal for Signal<'a, T>
 	where T: Axes<T> + Clone + std::ops::Index<usize> + std::fmt::Debug,
 	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
 	fn draw(&self, target: &mut glium::Frame, area: Rect){
-		
 		let trans = self.get_transform(area);
 
 		self.style.draw(&trans, target);
@@ -268,12 +370,26 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 			self.add_ds_point(&a);
 		}
 	}
+	fn set_bind_mode(&self, mode: u8){
+		self.view.set_bind_mode(mode);
+	}
+	fn get_view(&mut self) -> &mut View{
+		&mut self.view
+	}
+	fn share_view(&self){
+		self.view.share(&self.style.get_range(&self.points))
+	}
+	fn zoom_by(&self, by: f64){
+		self.view.zoom(by);
+	}
 }
 
 
 pub struct SignalManager<'a> {
 	signals: HashMap<String, Box<GenericSignal+'a>>,
 	display: &'a glium::Display,
+	selection: Option<String>,
+	views: Vec<Weak<RefCell<ViewData>>>,
 	pub point_count: usize
 }
 
@@ -283,6 +399,8 @@ impl <'a> SignalManager<'a>{
 	    	// signals_d1: HashMap::new(), signals_d2: HashMap::new(), signals_d3: HashMap::new(),
 	    	signals: HashMap::new(),
 	    	display,
+	    	selection: None,
+	    	views: Vec::new(),
 	    	point_count: 0
 	    }
 	}
@@ -295,22 +413,24 @@ impl <'a> SignalManager<'a>{
 				ch.add_point(point);
 			},
 			std::collections::hash_map::Entry::Vacant(val) => {
+				let view = View::new(name.clone());
+				self.views.push(Rc::downgrade(&view.data));
 				let mut ch: Box<GenericSignal+'a> = match point.ty {
 					PointType::D1=> {
 						let ds: Box<DrawStyle<D1>> = Box::new(Lines::new(self.display));
-						Box::new(Signal::new(name.clone(), ds, self.display))
+						Box::new(Signal::new(name.clone(), ds, view, self.display))
 					},
 					PointType::D2 => {
 						let ds: Box<DrawStyle<D2>> = Box::new(Lines::new(self.display));
-						Box::new(Signal::new(name.clone(), ds, self.display))
+						Box::new(Signal::new(name.clone(), ds, view, self.display))
 					},
 					PointType::D3=> {
 						let ds: Box<DrawStyle<D3>> = Box::new(Scatter::new(self.display));
-						Box::new(Signal::new(name.clone(), ds, self.display))
+						Box::new(Signal::new(name.clone(), ds, view, self.display))
 					},
 					PointType::BreakPoint => {
 						let ds: Box<DrawStyle<D1>> = Box::new(Scatter::new(self.display));
-						Box::new(Signal::new(name.clone(), ds, self.display))
+						Box::new(Signal::new(name.clone(), ds, view, self.display))
 					}
 				};
 				ch.add_point(point);
@@ -322,6 +442,14 @@ impl <'a> SignalManager<'a>{
 	}
 
 	pub fn draw_signals(&self, target: &mut glium::Frame, area: Rect){
+		for i in self.views.iter(){
+			if let Some(v) = i.upgrade(){ //TODO: dont leave invalid refrences in vec
+				v.borrow_mut().clear_range();
+			}
+		}
+		for sig in self.signals.values(){
+			sig.share_view();
+		}
 		for (_name, sig) in self.signals.iter(){
 			sig.draw(target, area);
 		}
@@ -334,6 +462,8 @@ impl <'a> SignalManager<'a>{
 	pub fn get_names(&self) -> impl Iterator<Item = &String>{
 		self.signals.keys()
 	}
+
+	//TODO: !Change this interface such that if a signal doesnt exist it is created, this also means changing Signal, so that it is not a generic
 	pub fn get_signal(&mut self, name: &str) -> Option<&mut Box<GenericSignal+'a>>{
 		self.signals.get_mut(name)
 	}
@@ -342,6 +472,44 @@ impl <'a> SignalManager<'a>{
 		self.signals.len()
 	}
 
+	pub fn get_selection(&mut self) -> &Option<String>{
+		if let Some(ref n) = self.selection.clone(){
+			if !self.signals.contains_key(n){
+				self.selection = None;
+			}
+		}
+		&self.selection
+	}
+	pub fn get_selected(&mut self) -> Option<&mut Box<GenericSignal+'a>>{
+		let name = self.get_selection().clone();
+		if let Some(n) = name {
+			self.get_signal(&n)
+		} else {
+			None
+		}
+	}
+
+	pub fn set_selection(&mut self, s: Option<String>){
+		self.selection = if let Some(n) = s{
+			if self.signals.contains_key(&n){
+				Some(n)
+			} else { None}
+		} else {
+			None
+		};
+	}
+
+	pub fn bind(&mut self, base: &String, other: &String){
+		let v;
+		if let Some(s) = self.get_signal(base){
+			v = s.get_view().clone();
+		} else {
+			return;
+		}
+		if let Some(s) = self.get_signal(other){
+			*s.get_view() = v;
+		}
+	}
 }
 
 
