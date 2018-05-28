@@ -47,8 +47,10 @@ pub struct UI<'a> {
 	text_format: RefCell<glium_text::TextDisplay<Rc<glium_text::FontTexture>>>,
 	cmdline_completions: Vec<String>,
 	completion_idx: usize,
-	cursor: DataCursor, hover_rad: f64, 
-	cursor2: Option<DataCursor>
+	cursor: DataCursor, hover_rad: f64, last_mouse_pos: (f64, f64),
+	cursor2: Option<DataCursor>,
+	working_area: (f64, f64, f64, f64),
+	lmb_pressed: bool
 }
 
 
@@ -66,10 +68,11 @@ impl <'a> UI<'a> {
     	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
     		axis_width: 0.,
     		cmdline_completions: Vec::new(), completion_idx: 0,
-    		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.1, 
+    		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.1, last_mouse_pos: (0.,0.), working_area: (0.,0.,0.,0.),
+    		lmb_pressed: false
     	}
     }
-    pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), mouse_pos: (f64, f64), frametime: f64 ){
+    pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), frametime: f64 ){
     	self.window_size = window_size;
 		self.draw_text(target, -0.98, 0.97, 0.04, (1.0, 1.0, 1.0, 1.0), &frametime.floor().to_string());
 
@@ -81,6 +84,7 @@ impl <'a> UI<'a> {
 	    let view_end_y = 1.0 - self.get_axis_height();
 
 	    let area = (view_start_x, view_start_y, view_end_x, view_end_y);
+	    self.working_area = area;
 
 	    let mut sel = self.signal_manager.get_selection().clone();
 	    if sel.is_none(){
@@ -91,12 +95,6 @@ impl <'a> UI<'a> {
 		    };
 	    	self.signal_manager.set_selection(sel.clone());
 		}
-
-		if sel.is_some(){
-			self.cursor.pos = ((2.*(mouse_pos.0/(window_size.0 as f64))-1.), (1. - 2.*(mouse_pos.1/(window_size.1 as f64))));
-			self.cursor.signal = sel;
-		}
-
 
 	    self.signal_manager.draw_signals(target, area);
 
@@ -227,14 +225,33 @@ impl <'a> UI<'a> {
     }
 
     pub fn send_mouse(&mut self, event: glium::glutin::WindowEvent){
-    	if let glium::glutin::WindowEvent::MouseWheel{delta, phase: _, modifiers: _, ..} = event{
-    		if let Some(sig) = self.signal_manager.get_selected(){
-				if let glium::glutin::MouseScrollDelta::LineDelta(_, y) = delta{
-					// println!("Mouse delta{:?}", y);
-					sig.zoom_by(y.into());
+    	match event{
+	    	glium::glutin::WindowEvent::MouseWheel{delta, phase: _, modifiers: _, ..} => {
+	    		if let Some(sig) = self.signal_manager.get_selected(){
+					if let glium::glutin::MouseScrollDelta::LineDelta(_, y) = delta{
+						// println!("Mouse delta{:?}", y);
+						sig.zoom_by(y.into());
+					}
 				}
-			}
-    	}
+	    	}
+	    	glium::glutin::WindowEvent::MouseInput{state, button, modifiers: _, ..} => {
+	    		if button == glium::glutin::MouseButton::Left{
+	    			self.lmb_pressed = state == glium::glutin::ElementState::Pressed;
+	    		}
+	    	}
+	    	glium::glutin::WindowEvent::CursorMoved{position,..}=>{
+				if let Some(sig) = self.signal_manager.get_selected(){
+					self.last_mouse_pos = self.cursor.pos;
+					self.cursor.pos = ((2.*(position.0/(self.window_size.0 as f64))-1.), (1. - 2.*(position.1/(self.window_size.1 as f64))));
+					self.cursor.signal = Some(sig.get_name().clone());
+	    			if self.lmb_pressed {
+						    let delta = (self.cursor.pos.0 - self.last_mouse_pos.0, self.cursor.pos.1 - self.last_mouse_pos.1);
+							sig.move_view_by(delta,  self.working_area)
+					}
+				}
+	    	}
+	    	_ => {}
+	    }
     }
 
     fn update_editor(&mut self){

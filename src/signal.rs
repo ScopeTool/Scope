@@ -14,7 +14,7 @@ use self::color_set::{Color, Generator};
 use drawstyles::*;
 
 
-type Rect = (f64, f64, f64, f64);
+pub type Rect = (f64, f64, f64, f64);
 
 static MIN_SCALE: f64 = 1e-12;
 
@@ -125,6 +125,9 @@ impl Range{
 	fn new() -> Range{
 		Range{min: Vec::new(), max: Vec::new()}
 	}
+	fn new_cap(cap: usize) -> Range{
+		Range{min: vec![NAN; cap], max: vec![NAN; cap]}
+	}
 	fn expandby(&mut self, other: &Range){
 		let mut new_min = Vec::new();//TODO: dont do these tiny heap allocations every frame
 		for i in 0..self.min.len().max(other.min.len()){
@@ -204,48 +207,79 @@ impl <A> RangedDeque<A> where
 
 #[derive(Debug,  Clone)]
 struct ViewData{
-	pos: (f32, f32),
+	pos: (f64, f64),
     zoom: f64,
     range: Range,
     maintain_aspect: bool,
-    mode: u8,
     id: String
 }
 impl ViewData{
 	fn clear_range(&mut self){
-	    self.range.min = vec![NAN; self.range.min.len()];
-		self.range.max = vec![NAN; self.range.max.len()];
+		for i in 0..self.range.min.len(){
+		    self.range.min[i] = NAN;
+			self.range.max[i] = NAN;
+		}
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct View {
     data: Rc<RefCell<ViewData>>,
+    mode: u8,
+    local_pos: (f64, f64)
 }
 impl View {
     fn new(name: String) -> View{
-    	let data = Rc::new(RefCell::new(ViewData{pos: (0.,0.), 
-    		zoom: 1., 
-    		range: Range::new(), 
-    		maintain_aspect: false, 
-    		mode: 0,
-    		id: name
-    	}));
-    	View{data}
+    	let data = Rc::new(RefCell::new(
+    		ViewData{
+    			pos: (0.,0.), 
+	    		zoom: 1., 
+	    		range: Range::new_cap(3), 
+	    		maintain_aspect: false, 
+	    		id: name
+	    	}));
+    	View{data, mode: 0, local_pos: (0.,0.)}
     }
 
     fn share(&self, range: &Range){
     	let mut data = self.data.borrow_mut();
-    	data.range.expandby(range);
+    	let r = &mut data.range;
+
+    	for i in 0..r.min.len().max(range.min.len()){
+    		if self.mode & (1 << (i+1)) != 0 {
+	    		let mut a = if i < range.min.len() {range.min[i]} else {NAN};
+	    		let mut b = if i < r.min.len() {r.min[i]} else {NAN};
+	    		r.min[i] = a.min(b);
+	    	}
+    	}
+    	for i in 0..r.max.len().max(range.max.len()){
+    		if self.mode & (1 << (i+1)) != 0 {
+	    		let mut a = if i < range.max.len() {range.max[i]} else {NAN};
+	    		let mut b = if i < r.max.len() {r.max[i]} else {NAN};
+	    		r.max[i] = a.max(b);
+	    	}
+    	}
     }
 
     fn get_transform(&self, area: Rect, range: &Range) -> Transform{
     	let data = self.data.borrow();
 
-    	let mut working_range = if 0b10 & data.mode != 0{&data.range} else {range};
+    	let (xs, ys, _, xmax, ymin, ymax) = self.get_working_scale(&data, area, range);
+
+    	let dx= if 0b10 & self.mode != 0{data.pos.0} else {self.local_pos.0};
+    	let dy = if 0b100 & self.mode != 0{data.pos.1} else {self.local_pos.1};
+
+		Transform{
+			dx: (area.2-xmax*xs + dx) as f32, dy: ((-ys*(ymax+ymin)/2.)+(area.3+area.1)/2.0 + dy) as f32,
+			sx: xs as f32, sy: ys as f32, sz: 1.0
+		}
+	}
+
+	fn get_working_scale(&self, data: &ViewData, area: Rect, range: &Range) -> (f64, f64, f64, f64, f64, f64){
+    	let mut working_range = if 0b10 & self.mode != 0{&data.range} else {range};
     	let xmin = working_range.min[0];
     	let xmax = working_range.max[0];
-    	working_range = if 0b100 & data.mode != 0{&data.range} else {range};
+    	working_range = if 0b100 & self.mode != 0{&data.range} else {range};
     	let ymin = working_range.min[1];
     	let ymax = working_range.max[1];
 
@@ -259,13 +293,9 @@ impl View {
 			xs = val; ys = val;
 		}
 
-		xs *= data.zoom;
-		ys *= data.zoom;
+		let zoom = data.zoom.max(1.);
 
-		Transform{
-			dx: (area.2-xmax*xs) as f32, dy: ((-ys*(ymax+ymin)/2.)+(area.3+area.1)/2.0) as f32,
-			sx: xs as f32, sy: ys as f32, sz: 1.0
-		}
+		(xs * zoom, ys * zoom, xmin, xmax, ymin, ymax)
 	}
 
 	fn zoom(&self, by: f64){
@@ -274,8 +304,17 @@ impl View {
 		data.zoom = data.zoom.max(MIN_SCALE)
 	}
 
-    fn set_bind_mode(&self, mode: u8){
-    	self.data.borrow_mut().mode = mode;
+	// Takes screen position mouse dx and dy
+	fn move_by(&mut self, by: (f64, f64), _area: Rect, _range: &Range){
+		let data = &mut self.data.borrow_mut().pos;
+		let x = if 0b10 & self.mode != 0{&mut (data.0)} else {&mut self.local_pos.0};
+		let y = if 0b100 & self.mode != 0{&mut (data.1)} else {&mut self.local_pos.1};
+		*x += by.0;
+		*y += by.1;
+	}
+
+    fn set_bind_mode(&mut self, mode: u8){
+    	self.mode = mode;
     }
 }
 
@@ -320,6 +359,7 @@ impl <'a, T> Signal<'a, T>
 }
 
 pub trait GenericSignal {
+	fn get_name(&self) -> &String;
     fn draw(&self, target: &mut glium::Frame, area: Rect);
     fn add_point(&mut self, point: MsgPoint);
     fn get_color(&self)-> Color;
@@ -327,10 +367,11 @@ pub trait GenericSignal {
     fn pick(&self, mouse: (f32, f32), area: Rect)->Option<PickData>;
     fn get_point_strings(&self, idx: usize) -> (String, String, String);
     fn set_style(&mut self, style: &Styles);
-    fn set_bind_mode(&self, mode: u8);
+    fn set_bind_mode(&mut self, mode: u8);
     fn get_view(&mut self) -> &mut View;
     fn share_view(&self);
     fn zoom_by(&self, by: f64);
+    fn move_view_by(&mut self, by: (f64, f64), area: Rect);
 }
 
 impl <'a, T> GenericSignal for Signal<'a, T>
@@ -370,7 +411,7 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 			self.add_ds_point(&a);
 		}
 	}
-	fn set_bind_mode(&self, mode: u8){
+	fn set_bind_mode(&mut self, mode: u8){
 		self.view.set_bind_mode(mode);
 	}
 	fn get_view(&mut self) -> &mut View{
@@ -381,6 +422,12 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	}
 	fn zoom_by(&self, by: f64){
 		self.view.zoom(by);
+	}
+	fn move_view_by(&mut self, by: (f64, f64), area: Rect){
+		self.view.move_by(by, area, &self.style.get_range(&self.points));
+	}
+	fn get_name(&self) -> &String{
+		&self.name
 	}
 }
 
@@ -508,6 +555,17 @@ impl <'a> SignalManager<'a>{
 		}
 		if let Some(s) = self.get_signal(other){
 			*s.get_view() = v;
+		}
+	}
+	pub fn free(&mut self, name: &String){
+		let view = View::new(name.clone());
+		let mut cpy = false;
+		if let Some(s) = self.get_signal(name){
+			*s.get_view() = view.clone();
+			cpy = true;
+		}
+		if cpy {
+			self.views.push(Rc::downgrade(&view.data));
 		}
 	}
 }

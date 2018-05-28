@@ -88,7 +88,6 @@ fn main(){
     // display.get_free_video_memory()
 
     let mut window_size = display.gl_window().get_inner_size().unwrap();
-    let mut mouse_pos = (0f64, 0f64);
 
 	
 	let refresh_rate = Duration::from_millis(30); //TODO: setting refresh rate to 15ms results in serious performance degradation
@@ -103,8 +102,7 @@ fn main(){
 	            glutin::Event::WindowEvent { event, .. } => match event {
 	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
 	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
-	                glutin::WindowEvent::CursorMoved{position, ..} => {mouse_pos.0 = position.0; mouse_pos.1 = position.1;},
-	                glutin::WindowEvent::MouseWheel{..} => ui.send_mouse(event),
+	                glutin::WindowEvent::MouseWheel{..} | glutin::WindowEvent::MouseInput{..} | glutin::WindowEvent::CursorMoved{..}=> ui.send_mouse(event),
 	                glutin::WindowEvent::KeyboardInput{input, ..}  => {ui.send_event(input)},
 	                glutin::WindowEvent::ReceivedCharacter(c) => ui.send_key(c),
 	                _ => (),
@@ -118,7 +116,7 @@ fn main(){
 
 	    target.clear_color(0.012, 0.012, 0.012, 1.0);
 	 
-	    ui.draw(&mut target, window_size, mouse_pos, ft_av);
+	    ui.draw(&mut target, window_size, ft_av);
 
 	    ft_av = 0.95*ft_av + 0.05*duration2us(&frametime.elapsed());
 	 

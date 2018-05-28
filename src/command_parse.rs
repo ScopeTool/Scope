@@ -21,9 +21,11 @@ pub fn parse(line: &str, run: bool, manager: &mut SignalManager) -> LineState {
 	    	"ds"|"drawstyle" => drawstyle(line, run, &mut valid, &mut possible_completions, manager),
 	    	"s"|"select" => select(line, run, &mut valid, &mut possible_completions, manager),
 	    	"b"|"bind" => bind(line, run, &mut valid, &mut possible_completions, manager),
+	    	"f"|"free" => free(line, run, &mut valid, &mut possible_completions, manager),
 	    	&_ => if run {println!("Invalid Command: {:?}", cmd)} else {possible_completions.push(String::from("drawstyle"));
 	    																possible_completions.push(String::from("select"));
-	    																possible_completions.push(String::from("bind"))
+	    																possible_completions.push(String::from("bind"));
+	    																possible_completions.push(String::from("free"));
 	    															}
 	    }
 	}
@@ -110,6 +112,23 @@ fn bind(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &
 			for i in sigs{
 				manager.bind(base, i);
 			}
+		}
+	}
+
+}
+
+fn free(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &mut SignalManager){
+	let bits = cmd.split_whitespace().collect::<Vec<&str>>();
+
+	let signals = select_signals( if bits.len() > 1 {&bits[1..]} else {&[]}, 
+		valid, pc, manager);
+	if !*valid{
+		return;
+	}
+
+	if run{
+		for i in signals.iter(){
+			manager.free(i);
 		}
 	}
 
