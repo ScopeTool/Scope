@@ -229,8 +229,7 @@ impl <'a> UI<'a> {
 	    	glium::glutin::WindowEvent::MouseWheel{delta, phase: _, modifiers: _, ..} => {
 	    		if let Some(sig) = self.signal_manager.get_selected(){
 					if let glium::glutin::MouseScrollDelta::LineDelta(_, y) = delta{
-						// println!("Mouse delta{:?}", y);
-						sig.zoom_by(y.into());
+						sig.zoom_by(y as f64, (self.working_area.2 - self.last_mouse_pos.0,  (self.working_area.3 - self.last_mouse_pos.1 - (self.working_area.3-self.working_area.1)/2.)));
 					}
 				}
 	    	}

@@ -266,11 +266,12 @@ impl View {
 
     	let (xs, ys, _, xmax, ymin, ymax) = self.get_working_scale(&data, area, range);
 
-    	let dx= if 0b10 & self.mode != 0{data.pos.0} else {self.local_pos.0};
+    	let dx = if 0b010 & self.mode != 0{data.pos.0} else {self.local_pos.0};
     	let dy = if 0b100 & self.mode != 0{data.pos.1} else {self.local_pos.1};
 
 		Transform{
 			dx: (area.2-xmax*xs + dx) as f32, dy: ((-ys*(ymax+ymin)/2.)+(area.3+area.1)/2.0 + dy) as f32,
+			// dx: dx as f32, dy: dy as f32,
 			sx: xs as f32, sy: ys as f32, sz: 1.0
 		}
 	}
@@ -298,16 +299,33 @@ impl View {
 		(xs * zoom, ys * zoom, xmin, xmax, ymin, ymax)
 	}
 
-	fn zoom(&self, by: f64){
+	fn zoom(&mut self, by: f64, center: (f64, f64)){
 		let mut data = self.data.borrow_mut();
-		data.zoom += by/10.;
-		data.zoom = data.zoom.max(MIN_SCALE)
+		let last = data.zoom;
+		data.zoom = (data.zoom + by/10.).max(1.);
+		let zoom = data.zoom;
+		let mut final_zoom = data.zoom;
+		let dz = data.zoom - last;
+		{
+			let pos = &mut data.pos;
+			let x = if 0b010 & self.mode != 0{&mut (pos.0)} else {&mut self.local_pos.0};
+			let y = if 0b100 & self.mode != 0{&mut (pos.1)} else {&mut self.local_pos.1};
+			if zoom > 1.{
+				*x += (center.0)*dz;
+				*y += (center.1)*dz;
+			} else {
+				final_zoom = 1.;
+				*x = 0.;
+				*y = 0.;
+			}
+		}
+		data.zoom = final_zoom;
 	}
 
 	// Takes screen position mouse dx and dy
 	fn move_by(&mut self, by: (f64, f64), _area: Rect, _range: &Range){
 		let data = &mut self.data.borrow_mut().pos;
-		let x = if 0b10 & self.mode != 0{&mut (data.0)} else {&mut self.local_pos.0};
+		let x = if 0b010 & self.mode != 0{&mut (data.0)} else {&mut self.local_pos.0};
 		let y = if 0b100 & self.mode != 0{&mut (data.1)} else {&mut self.local_pos.1};
 		*x += by.0;
 		*y += by.1;
@@ -370,7 +388,7 @@ pub trait GenericSignal {
     fn set_bind_mode(&mut self, mode: u8);
     fn get_view(&mut self) -> &mut View;
     fn share_view(&self);
-    fn zoom_by(&self, by: f64);
+    fn zoom_by(&mut self, by: f64, center: (f64, f64));
     fn move_view_by(&mut self, by: (f64, f64), area: Rect);
 }
 
@@ -420,8 +438,8 @@ impl <'a, T> GenericSignal for Signal<'a, T>
 	fn share_view(&self){
 		self.view.share(&self.style.get_range(&self.points))
 	}
-	fn zoom_by(&self, by: f64){
-		self.view.zoom(by);
+	fn zoom_by(&mut self, by: f64, center: (f64, f64)){
+		self.view.zoom(by, center);
 	}
 	fn move_view_by(&mut self, by: (f64, f64), area: Rect){
 		self.view.move_by(by, area, &self.style.get_range(&self.points));
