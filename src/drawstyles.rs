@@ -1,10 +1,10 @@
 extern crate glium;
 extern crate color_set;
-use std;
+
 use glium::VertexBuffer;
 use glium::Surface;
 use std::collections::VecDeque;
-use super::signal::{Axes, Point, Range, D1, RangedDeque, PickData};
+use super::signal::{Axes, Point, Range, RangedDeque, PickData};
 use self::color_set::Color;
 
 #[derive(Debug, Copy, Clone)]
@@ -16,13 +16,9 @@ implement_vertex!(Vertex, position, color);
 
 fn make_vertex<T>(color: &Color, pt: &Point<T>) -> Vertex
 	where T: Axes<T>{
-	let d = pt.axes.as_vec();
-	let (x, y, z) = match d.len(){
-		2 => (d[0], d[1], 1.),
-		3 => (d[1], d[2], 1.),
-		4 => (d[1], d[2], d[3]), //TODO: z should be d[1]/max z
-		_ => panic!("Point can only be of type D1, D2, D3 which can only create a vec of len 2 to 4")
-	};
+	let x = pt.axes[T::x()].clone().into();
+	let y = pt.axes[T::y()].clone().into();
+	let z = if T::z() >= 0{pt.axes[T::z() as usize].clone().into()} else {1.}; //TODO: z should be d[1]/max z
 	let v = Vertex{
 		position: [(x) as f32, (y) as f32, z as f32],
 		color: [color.0, color.1, color.2]
@@ -109,8 +105,7 @@ fn point_pos(trans: Transform, x: f64, y: f64, us_x: f64, us_y: f64) -> (f32, f3
 }
 
 fn find_min<T, F>(points: &RangedDeque<T>, cmp: F) -> (Option<usize>, f32) where
-	T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone,
+	T: Axes<T> + Clone,
 	F: Fn(&Point<T>)->f32{
 	let mut min_val = 2.0;
 	let mut min_idx = None;
@@ -129,22 +124,20 @@ fn find_min<T, F>(points: &RangedDeque<T>, cmp: F) -> (Option<usize>, f32) where
 // }
 
 
-fn get_std_pt_strs<T>(pt: &Point<T>, xidx: usize) -> (String, String, String)
-	where T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+fn get_std_pt_strs<T>(pt: &Point<T>) -> (String, String, String)
+	where T: Axes<T> + Clone{
 	//DrawStyle should provide this
-	let v = pt.axes.as_vec();
-	let ts = v[0];
-	let x = v[xidx];
-	let y = v[xidx+1];
+	let ts = pt.axes[T::timestamp()].clone().into();
+	let x = pt.axes[T::x()].clone().into();
+	let y = pt.axes[T::y()].clone().into();
 	let mut z = String::new();
-	if xidx != 0{
+	if T::x() != T::timestamp(){
 		z.push_str(&format!("{:.*} ns, ", 3, ts))
 	}
-	if v.len() > 3{
-		z.push_str(&format!("{:.*}", 3, v[3]))
+	if T::z() >= 0{
+		z.push_str(&format!("{:.*}", 3, T::z() as usize));
 	} else {
-		z.pop(); z.pop();
+		z.pop(); z.pop(); // remove trailing comma and space from timestamp
 	}
 	(
 		format!("{:.*}", 3, x),
@@ -153,18 +146,41 @@ fn get_std_pt_strs<T>(pt: &Point<T>, xidx: usize) -> (String, String, String)
 	)
 }
 
+// List of Drawstyles defined in this file, used to ensure that all styles are provided as options from command line
 #[derive(Debug)]
 pub enum Styles{
 	Scatter, 
 	Lines
 }
 
-pub trait DrawStyle<T> {
+pub trait DrawStyle<T> where T: Axes<T> + Clone{
 	fn push(&mut self, pt: &Point<T>, color: &Color, points:&RangedDeque<T>, display: &glium::Display);
 	fn draw(&self, trans: &Transform, target: &mut glium::Frame);
-    fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>;
-    fn get_range(&self, points: &RangedDeque<T>) -> Range;
-    fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String);
+    fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>{
+    	let mut t = trans.clone();
+    	t.dx -= mouse.0;
+    	t.dy -= mouse.1;
+    	let ux = unit_scale[T::x()];
+    	let uy = unit_scale[T::y()];
+    	let d = find_min(points, move |pt|{
+    		let (x,y) = point_pos(t.clone(), pt.axes[T::x()].clone().into(), pt.axes[T::y()].clone().into(), ux, uy);
+    		x.abs()+y.abs()
+    	});
+    	if let Some(idx) = d.0{
+    		if pick_thresh >= d.1{
+    			let pt = points.get(idx);
+    			return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[T::x()].clone().into(), pt.axes[T::y()].clone().into(), ux, uy)});
+    		}
+    	}
+    	return None;
+    }
+    fn get_range(&self, points: &RangedDeque<T>) -> Range{
+    	let r = points.get_range();
+    	return Range{min: vec![r.min[T::x()], r.min[T::y()]], max: vec![r.max[T::x()], r.max[T::y()]]};
+    }
+    fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String){
+    	get_std_pt_strs(pt)
+    }
 }
 
 
@@ -218,8 +234,7 @@ impl Scatter {
 }
 
 impl <T> DrawStyle<T> for Scatter
-	where T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{ 
+	where T: Axes<T> + Clone{ 
 	fn push(&mut self, pt: &Point<T>, color: &Color, _points:&RangedDeque<T>, display: &glium::Display){
 		self.vbos.push::<T>(make_vertex::<T>(color, pt), display);
 	}
@@ -233,35 +248,6 @@ impl <T> DrawStyle<T> for Scatter
 		self.vbos.draw(move |vb|{
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
-	}
-	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>{
-		let mut t = trans.clone();
-		t.dx -= mouse.0;
-		t.dy -= mouse.1;
-		let xidx = if unit_scale.len() == 2{0} else {1};
-		let ux = unit_scale[xidx];
-		let uy = unit_scale[xidx+1];
-		let d = find_min(points, move |pt|{
-			let (x,y) = point_pos(t.clone(), pt.axes[xidx].clone().into(), pt.axes[xidx+1].clone().into(), ux, uy);
-			x.abs()+y.abs()
-		});
-		if let Some(idx) = d.0{
-			if pick_thresh >= d.1{
-				let pt = points.get(idx);
-				return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[xidx+1].clone().into(), ux, uy)});
-			}
-		}
-		return None;
-	}
-	fn get_range(&self, points: &RangedDeque<T>) -> Range{
-		let r = points.get_range();
-		if T::size() == D1::size(){
-			return Range{min: vec![r.min[0], r.min[1]], max: vec![r.max[0], r.max[1]]};
-		}
-		return Range{min: vec![r.min[1], r.min[2]], max: vec![r.max[1], r.max[2]]};
-	}
-	fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String){
-		get_std_pt_strs(pt,  if T::size() == 2{0} else {1})
 	}
 }
 
@@ -305,8 +291,7 @@ impl Lines {
 }
 
 impl <T> DrawStyle<T> for Lines
-	where T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{ 
+	where T: Axes<T> + Clone{ 
 	fn push(&mut self, pt: &Point<T>, color: &Color, _points:&RangedDeque<T>, display: &glium::Display){
 		self.vbos.push::<T>(make_vertex::<T>(color, pt), display);
 	}
@@ -320,35 +305,5 @@ impl <T> DrawStyle<T> for Lines
 		self.vbos.draw(move |vb|{
 			target.draw(vb, &indices, &self.program, &uniforms, &Default::default()).unwrap()
 		});
-	}
-	fn pick(&self, points: &RangedDeque<T>, mouse: (f32, f32), trans: Transform, unit_scale: Vec<f64>, pick_thresh: f32) -> Option<PickData>{
-		let mut t = trans.clone();
-		t.dx -= mouse.0;
-		t.dy -= mouse.1;
-		let xidx = if unit_scale.len() == 2{0} else {1};
-		let ux = unit_scale[xidx];
-		let uy = unit_scale[xidx+1];
-		let d = find_min(points, move |pt|{
-			let (x,y) = point_pos(t.clone(), pt.axes[xidx].clone().into(), pt.axes[xidx+1].clone().into(), ux, uy);
-			x.abs()+y.abs()
-		});
-		if let Some(idx) = d.0{
-			if pick_thresh >= d.1{
-				let pt = points.get(idx);
-				return Some(PickData{index:idx, screen_pos: point_pos(trans, pt.axes[xidx].clone().into(), pt.axes[xidx+1].clone().into(), ux, uy)});
-			}
-		}
-		return None;
-	}
-	fn get_range(&self, points: &RangedDeque<T>) -> Range{
-		let r = points.get_range();
-		if T::size() == D1::size(){
-			// println!("{:?}", r);
-			return Range{min: vec![r.min[0], r.min[1]], max: vec![r.max[0], r.max[1]]};
-		}
-		return Range{min: vec![r.min[1], r.min[2]], max: vec![r.max[1], r.max[2]]};
-	}
-	fn get_point_strs(&self, pt: &Point<T>) -> (String, String, String){
-		get_std_pt_strs(pt,  if T::size() == 2{0} else {1})
 	}
 }

@@ -48,14 +48,21 @@ pub struct D1([f64;2]);
 pub struct D2([f64;3]);
 #[derive(Debug, Clone, Copy)]
 pub struct D3([f64;4]);
-pub trait Axes<T>{ 
+pub trait Axes<T>: 
+	std::ops::Index<usize, Output = <Self as Axes<T>>::AxesUnit> {
+    type AxesUnit: std::marker::Sized+std::convert::Into<f64>+Clone;
 	fn size() -> usize;
 	fn default() -> T;
 	fn ones() -> T;
 	fn as_vec(&self) -> Vec<f64>;
 	fn into(point: MsgPoint) -> Point<T>;
-	}
+	fn timestamp() -> usize;
+	fn x() -> usize;
+	fn y() -> usize;
+	fn z() -> i32;
+}
 impl Axes<D1> for D1 {
+	type AxesUnit = f64;
 	fn size() -> usize{2}
 	fn default() -> D1 {D1{0:[NAN; 2]}} 
 	fn ones() -> D1 {D1{0:[1.; 2]}}
@@ -63,8 +70,13 @@ impl Axes<D1> for D1 {
 	fn into(point: MsgPoint) -> Point<D1>{
 		Point::new(D1{0:[point.timestamp, point.x]})
 	}
+	fn timestamp() -> usize{0}
+	fn x() -> usize{Self::timestamp()}
+	fn y() -> usize{1}
+	fn z() -> i32{-1}
 }
 impl Axes<D2> for D2 {
+	type AxesUnit = f64;
 	fn size() -> usize{3}
 	fn default() -> D2 {D2{0:[NAN; 3]}} 
 	fn ones() -> D2 {D2{0:[1.; 3]}}
@@ -72,15 +84,24 @@ impl Axes<D2> for D2 {
 	fn into(point: MsgPoint) -> Point<D2>{
 		Point::new(D2{0:[point.timestamp, point.x, point.y]})
 	}
+	fn timestamp() -> usize{0}
+	fn x() -> usize{1}
+	fn y() -> usize{2}
+	fn z() -> i32{-1}
 }
 impl Axes<D3> for D3 {
+	type AxesUnit = f64;
 	fn size() -> usize{4}
 	fn default() -> D3 {D3{0:[NAN; 4]}} 
 	fn ones() -> D3 {D3{0:[1.; 4]}}
 	fn as_vec(&self) -> Vec<f64>{self.0.to_vec()}
 	fn into(point: MsgPoint) -> Point<D3>{
-		Point::new(D3{0:[point. timestamp, point.x, point.y, point.z]})
+		Point::new(D3{0:[point.timestamp, point.x, point.y, point.z]})
 	}
+	fn timestamp() -> usize{0}
+	fn x() -> usize{1}
+	fn y() -> usize{2}
+	fn z() -> i32{3}
 }
 
 impl std::ops::Index<usize> for D1 {
@@ -156,8 +177,7 @@ pub struct RangedDeque<A>{
 }
 
 impl <A> RangedDeque<A> where
-	A: Axes<A> + Clone + std::ops::Index<usize>,
-	<A as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+	A: Axes<A> + Clone{
 	fn new() -> RangedDeque<A>{
 		RangedDeque{points: std::collections::VecDeque::new(),
 	   				range: Range{min: A::default().as_vec(), max: A::default().as_vec()}}
@@ -349,8 +369,7 @@ struct Signal<'a, A> {
 }
 
 impl <'a, T> Signal<'a, T>
-	where T: Axes<T> + Clone + std::ops::Index<usize>,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+	where T: Axes<T> + Clone{
 	fn new(name: String, style: Box<DrawStyle<T>>,  view: View, display: &'a glium::Display) -> Signal<'a,T>{
 		Signal{	
 				name: name.clone(), 
@@ -393,8 +412,7 @@ pub trait GenericSignal {
 }
 
 impl <'a, T> GenericSignal for Signal<'a, T>
-	where T: Axes<T> + Clone + std::ops::Index<usize> + std::fmt::Debug,
-	<T as std::ops::Index<usize>>::Output: std::marker::Sized+std::convert::Into<f64>+Clone{
+	where T: Axes<T> + Clone + std::fmt::Debug{
 	fn draw(&self, target: &mut glium::Frame, area: Rect){
 		let trans = self.get_transform(area);
 

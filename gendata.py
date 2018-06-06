@@ -37,7 +37,7 @@ if __name__ == '__main__':
 			y = y*min(floor(abs(y)+.2), 1)
 			# print ":#D:"+str(i)+","+str(y)
 			log("d", i, y)
-			log("e", i,  sin(((i+0)/res))*10)
+			log("e", i, sin(((i+0)/res))*10)
 			sys.stdout.flush()
 			# sleep(0.08)
 
