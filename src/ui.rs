@@ -68,7 +68,7 @@ impl <'a> UI<'a> {
     	UI{signal_manager, editor, window_size: (0,0), ledgend_width: 0.2, text_height, text_system: system, text_format: RefCell::new(text),
     		axis_width: 0.,
     		cmdline_completions: Vec::new(), completion_idx: 0,
-    		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.1, last_mouse_pos: (0.,0.), working_area: (0.,0.,0.,0.),
+    		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.03, last_mouse_pos: (0.,0.), working_area: (0.,0.,0.,0.),
     		lmb_pressed: false
     	}
     }
@@ -263,18 +263,19 @@ impl <'a> UI<'a> {
     	self.completion_idx = 0;
     }
 
-    fn draw_cmdline(&self, target: &mut Frame, area: (f64, f64, f64, f64)){
+    fn draw_cmdline(&mut self, target: &mut Frame, area: (f64, f64, f64, f64)){
     	let mut rhs = area.0;
     	let cmd_com_y = (area.1-1.0)/2.0;
     	let cmd_height = self.get_cmd_height()*0.95;
     	let ypos = cmd_com_y - cmd_height/2.0;
     	self.draw_rect(target, DARK_GREY, (rhs, ypos),((area.2-area.0), cmd_height));
     	let scale = (cmd_height as f32)*0.65/(self.text_height);
+    	let color = if let Some(s) = self.signal_manager.get_selected(){ let c = s.get_color(); (c.0, c.1, c.2, 1.0) } else { (0.8,0.2,0.1, 1.0) };
 
     	let (first, c, rest) = self.editor.get_buffer_parts();
     	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), first);
     	rhs += last;
-    	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (0.8,0.2,0.1, 1.0), c);
+    	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, color, c);
     	rhs += last;
     	let (last, _) = self.draw_text(target, rhs, cmd_com_y, scale, (1.,1.,1., 1.0), rest);
     	if let Some(cmpl) = self.get_completion(){

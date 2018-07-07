@@ -242,6 +242,17 @@ impl ViewData{
 	}
 }
 
+#[repr(u8)]
+pub enum AxisBind {
+	None = 	0b0000u8,
+    X = 	0b0010u8,
+    Y = 	0b0100u8,
+    Z = 	0b1000u8,
+    SX = 	0b10000u8,
+    SY = 	0b100000u8,
+    SZ = 	0b1000000u8,
+}
+
 #[derive(Debug, Clone)]
 pub struct View {
     data: Rc<RefCell<ViewData>>,
@@ -286,8 +297,8 @@ impl View {
 
     	let (xs, ys, _, xmax, ymin, ymax) = self.get_working_scale(&data, area, range);
 
-    	let dx = if 0b010 & self.mode != 0{data.pos.0} else {self.local_pos.0};
-    	let dy = if 0b100 & self.mode != 0{data.pos.1} else {self.local_pos.1};
+    	let dx = if AxisBind::X as u8 & self.mode != 0{data.pos.0} else {self.local_pos.0};
+    	let dy = if AxisBind::Y as u8 & self.mode != 0{data.pos.1} else {self.local_pos.1};
 
 		Transform{
 			dx: (area.2-xmax*xs + dx) as f32, dy: ((-ys*(ymax+ymin)/2.)+(area.3+area.1)/2.0 + dy) as f32,
@@ -297,10 +308,10 @@ impl View {
 	}
 
 	fn get_working_scale(&self, data: &ViewData, area: Rect, range: &Range) -> (f64, f64, f64, f64, f64, f64){
-    	let mut working_range = if 0b10 & self.mode != 0{&data.range} else {range};
+    	let mut working_range = if AxisBind::X as u8 & self.mode != 0{&data.range} else {range};
     	let xmin = working_range.min[0];
     	let xmax = working_range.max[0];
-    	working_range = if 0b100 & self.mode != 0{&data.range} else {range};
+    	working_range = if AxisBind::Y as u8 & self.mode != 0{&data.range} else {range};
     	let ymin = working_range.min[1];
     	let ymax = working_range.max[1];
 
@@ -328,8 +339,8 @@ impl View {
 		let dz = data.zoom - last;
 		{
 			let pos = &mut data.pos;
-			let x = if 0b010 & self.mode != 0{&mut (pos.0)} else {&mut self.local_pos.0};
-			let y = if 0b100 & self.mode != 0{&mut (pos.1)} else {&mut self.local_pos.1};
+			let x = if AxisBind::X as u8 & self.mode != 0{&mut (pos.0)} else {&mut self.local_pos.0};
+			let y = if AxisBind::Y as u8 & self.mode != 0{&mut (pos.1)} else {&mut self.local_pos.1};
 			if zoom > 1.{
 				*x += (center.0)*dz;
 				*y += (center.1)*dz;
@@ -345,8 +356,8 @@ impl View {
 	// Takes screen position mouse dx and dy
 	fn move_by(&mut self, by: (f64, f64), _area: Rect, _range: &Range){
 		let data = &mut self.data.borrow_mut().pos;
-		let x = if 0b010 & self.mode != 0{&mut (data.0)} else {&mut self.local_pos.0};
-		let y = if 0b100 & self.mode != 0{&mut (data.1)} else {&mut self.local_pos.1};
+		let x = if AxisBind::X as u8 & self.mode != 0{&mut (data.0)} else {&mut self.local_pos.0};
+		let y = if AxisBind::Y as u8 & self.mode != 0{&mut (data.1)} else {&mut self.local_pos.1};
 		*x += by.0;
 		*y += by.1;
 	}

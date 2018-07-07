@@ -1,5 +1,5 @@
 // get suggestions given current buffer state, and parse buffer and set state
-use signal::SignalManager;
+use signal::{SignalManager, AxisBind};
 use drawstyles::*;
 
 
@@ -84,16 +84,16 @@ fn bind(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &
 	if bits.len() > 1{
 		for c in bits[1].chars(){
 			mode |= match c{
-				'_' => 0,
-				'x' => 0b0010,
-				'y' => 0b0100,
-				'z' => 0b1000,
+				'_' => AxisBind::None,
+				'x' => AxisBind::X,
+				'y' => AxisBind::Y,
+				'z' => AxisBind::Z,
 				_ => {
 					*valid = false;
 					pc.push(String::from("x")); pc.push(String::from("y")); pc.push(String::from("xy")); pc.push(String::from("xyz"));
 					return;
 				}
-			}
+			} as u8
 		}
 	}
 
