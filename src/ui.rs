@@ -241,7 +241,7 @@ impl <'a> UI<'a> {
 	    	glium::glutin::WindowEvent::CursorMoved{position,..}=>{
 				if let Some(sig) = self.signal_manager.get_selected(){
 					self.last_mouse_pos = self.cursor.pos;
-					self.cursor.pos = ((2.*(position.0/(self.window_size.0 as f64))-1.), (1. - 2.*(position.1/(self.window_size.1 as f64))));
+					self.cursor.pos = ((2.*(position.x/(self.window_size.0 as f64))-1.), (1. - 2.*(position.y/(self.window_size.1 as f64))));
 					self.cursor.signal = Some(sig.get_name().clone());
 	    			if self.lmb_pressed {
 						    let delta = (self.cursor.pos.0 - self.last_mouse_pos.0, self.cursor.pos.1 - self.last_mouse_pos.1);

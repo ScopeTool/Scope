@@ -81,7 +81,7 @@ fn main(){
 	let _parse_thread = std::thread::spawn(move || {read_thread_main(&rx_stdin, &send_points, &settings);});
 
 
-	match display.gl_window().set_cursor_state(glutin::CursorState::Hide){ _ => ()}
+	display.gl_window().window().hide_cursor(true);
 
     let mut ui = UI::new(&display);
 
@@ -100,7 +100,7 @@ fn main(){
 	    events_loop.poll_events(|ev| {
 	        match ev {
 	            glutin::Event::WindowEvent { event, .. } => match event {
-	                glutin::WindowEvent::Closed => {closed = true; println!("Got Window Close");},
+	                glutin::WindowEvent::CloseRequested => {closed = true;},
 	                glutin::WindowEvent::Resized{..} => {window_size = display.gl_window().get_inner_size().unwrap()},
 	                glutin::WindowEvent::MouseWheel{..} | glutin::WindowEvent::MouseInput{..} | glutin::WindowEvent::CursorMoved{..}=> ui.send_mouse(event),
 	                glutin::WindowEvent::KeyboardInput{input, ..}  => {ui.send_event(input)},
@@ -116,7 +116,7 @@ fn main(){
 
 	    target.clear_color(0.012, 0.012, 0.012, 1.0);
 	 
-	    ui.draw(&mut target, window_size, ft_av);
+	    ui.draw(&mut target, window_size.into(), ft_av);
 
 	    ft_av = 0.95*ft_av + 0.05*duration2us(&frametime.elapsed());
 	 
