@@ -116,7 +116,7 @@ fn main(){
 
 	    target.clear_color(0.012, 0.012, 0.012, 1.0);
 	 
-	    ui.draw(&mut target, window_size.into(), ft_av);
+	    ui.draw(&mut target, display.gl_window().get_hidpi_factor(), window_size, ft_av); 
 
 	    ft_av = 0.95*ft_av + 0.05*duration2us(&frametime.elapsed());
 	 

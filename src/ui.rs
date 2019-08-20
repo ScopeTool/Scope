@@ -50,7 +50,8 @@ pub struct UI<'a> {
 	cursor: DataCursor, hover_rad: f64, last_mouse_pos: (f64, f64),
 	cursor2: Option<DataCursor>,
 	working_area: (f64, f64, f64, f64),
-	lmb_pressed: bool
+	lmb_pressed: bool,
+	hidpi_factor: f64
 }
 
 
@@ -69,11 +70,13 @@ impl <'a> UI<'a> {
     		axis_width: 0.,
     		cmdline_completions: Vec::new(), completion_idx: 0,
     		cursor: DataCursor::new(), cursor2: None, hover_rad: 0.03, last_mouse_pos: (0.,0.), working_area: (0.,0.,0.,0.),
-    		lmb_pressed: false
+    		lmb_pressed: false,
+    		hidpi_factor: 1.0,
     	}
     }
-    pub fn draw(&mut self, target: &mut Frame, window_size: (u32, u32), frametime: f64 ){
-    	self.window_size = window_size;
+    pub fn draw(&mut self, target: &mut Frame, hidpi_factor: f64, window_size: glium::glutin::dpi::LogicalSize, frametime: f64 ){
+    	self.hidpi_factor = hidpi_factor;
+    	self.window_size = window_size.to_physical(hidpi_factor).into();
 		self.draw_text(target, -0.98, 0.97, 0.04, (1.0, 1.0, 1.0, 1.0), &frametime.floor().to_string());
 
 		// self.debug_perf(frametime);
@@ -241,7 +244,7 @@ impl <'a> UI<'a> {
 	    	glium::glutin::WindowEvent::CursorMoved{position,..}=>{
 				if let Some(sig) = self.signal_manager.get_selected(){
 					self.last_mouse_pos = self.cursor.pos;
-					self.cursor.pos = ((2.*(position.x/(self.window_size.0 as f64))-1.), (1. - 2.*(position.y/(self.window_size.1 as f64))));
+					self.cursor.pos = ((2.*(position.x*self.hidpi_factor/(self.window_size.0 as f64))-1.), (1. - 2.*(position.y*self.hidpi_factor/(self.window_size.1 as f64))));
 					self.cursor.signal = Some(sig.get_name().clone());
 	    			if self.lmb_pressed {
 						    let delta = (self.cursor.pos.0 - self.last_mouse_pos.0, self.cursor.pos.1 - self.last_mouse_pos.1);
