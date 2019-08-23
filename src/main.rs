@@ -44,7 +44,7 @@ fn main(){
 	//Start a thread to begin polling standard input for new data, any new lines are timestamped and passed along the parsing thread
 	let (send_stdin, rx_stdin): (Sender<(Duration, String, usize)>, Receiver<(Duration, String, usize)>) = channel::unbounded();
 	let _read_thread = std::thread::spawn(move||{
-		let mut line_number = 0;
+		let mut line_number = 0usize;
 		let mut buffer = String::new();
 		loop {
 			match io::stdin().read_line(&mut buffer){
@@ -154,6 +154,10 @@ struct ReaderSettings {
 
 fn read_thread_main(rx_stdin: &Receiver<(Duration, String, usize)>, send_points: &Sender<Point>, settings: &ReaderSettings) {
 	let deci: &'static str =  r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?";
+	
+	let csv = &format!("^(?:({})(?:\\s+|,\\s*|$)){{1,3}}$", deci);
+	let csvgrab = Regex::new(csv).unwrap();
+
 	let one = &format!("~\\.(.+)@\\s*({})",deci);
 	let two = &format!("~\\.(.+)@\\s*({})\\s*,\\s*({})", deci, deci);
 	let three = &format!("~\\.(.+)@\\s*({})\\s*,\\s*({})\\s*,\\s*({})", deci, deci, deci);
@@ -176,15 +180,25 @@ fn read_thread_main(rx_stdin: &Receiver<(Duration, String, usize)>, send_points:
 	loop {
 		match rx_stdin.recv() {
 			Ok(d) => {
-				parse_line(&d.0, &d.1, d.2, send_points, &set, &grabbers, settings)
+				parse_line(&d.0, &d.1, d.2, send_points, &set, &grabbers, settings, &csvgrab)
 			},
 			Err(_) => {sleep(Duration::from_secs(1))}
 		}
 	}
 }
 
-fn parse_line(timestamp: &Duration, data: &String, ln: usize, tx: &Sender<Point>, set: &RegexSet, grabbers: &[Regex; 5], settings: &ReaderSettings){
+fn parse_line(timestamp: &Duration, in_data: &String, ln: usize, tx: &Sender<Point>, set: &RegexSet, grabbers: &[Regex], settings: &ReaderSettings, iscsv: &Regex){
 	let ts = duration2us(timestamp);
+
+	//Quick and dirty hack to accept CSVs
+	let mut data = in_data;
+	let mut s;
+	if iscsv.is_match(data){
+		s = String::from("~.csv@");
+		s.push_str(data);
+		data = &s
+	}
+
 	let which: Vec<usize> = set.matches(data).into_iter().collect();
 	if which.len() == 0 { //No candidate matches
 		passthrough(data);
