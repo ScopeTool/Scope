@@ -1,4 +1,4 @@
 #!/bin/bash
 export RUST_BACKTRACE=1
-cargo build && ./gendata.py $1  | target/debug/scope
+cargo build && python2 ./gendata.py $1  | target/debug/scope
 

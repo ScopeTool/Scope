@@ -2,7 +2,7 @@
 
 import sys
 from time import sleep
-from random import randint
+from random import randint, choice
 from math import sin, cos, floor, atan2, asin, acos
 
 def log(chan, *args):
@@ -125,3 +125,13 @@ if __name__ == '__main__':
 				cpy += step
 				cp = pos
 			# sleep(0.1)
+
+	elif test == 6:
+		sigs = ["A", "B", "C", "D", "E"]
+		for i in xrange(30):
+			s = choice(sigs)
+			log(s, 1)
+			log(s, 2)
+			sleep(randint(1,2))
+			sys.stdout.flush()
+

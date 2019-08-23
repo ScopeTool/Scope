@@ -197,8 +197,11 @@ impl <'a> UI<'a> {
 
     pub fn send_event(&mut self, input: KeyboardInput){
 	    if let Some(k) = input.virtual_keycode{
-			if input.state == glium::glutin::ElementState::Released{
+			if input.state == glium::glutin::ElementState::Pressed{
 				match k {
+				    VKC::Tab if input.modifiers.shift && self.cmdline_completions.len() > 0 => { 
+				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len();
+				    }
 				    VKC::Tab => {
 				    	let mut cmpl = None;
 				    	if let Some(c) = self.get_completion(){
@@ -209,9 +212,6 @@ impl <'a> UI<'a> {
 				    	}
 				    	//TODO: there has to be a better way to do this
 				    }, 
-				    VKC::Return if input.modifiers.shift && self.cmdline_completions.len() > 0 => { 
-				    	self.completion_idx = (self.completion_idx + 1) % self.cmdline_completions.len();
-				    }
 				    VKC::Return => { 
 				    	let rslt = command_parse::parse(self.editor.get_buffer(), true, &mut self.signal_manager);
 				    	if rslt.valid{
