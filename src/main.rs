@@ -83,7 +83,10 @@ fn main() {
         read_thread_main(&rx_stdin, &send_points, &settings);
     });
 
-    display.gl_window().window().hide_cursor(true);
+    display
+        .gl_window()
+        .window()
+        .set_cursor_state(glutin::CursorState::Hide);
 
     let mut ui = UI::new(&display);
 
@@ -100,7 +103,7 @@ fn main() {
         //TODO: Only redraw when need user input or new data to draw
         events_loop.poll_events(|ev| match ev {
             glutin::Event::WindowEvent { event, .. } => match event {
-                glutin::WindowEvent::CloseRequested => {
+                glutin::WindowEvent::Closed => {
                     closed = true;
                 }
                 glutin::WindowEvent::Resized { .. } => {
@@ -125,7 +128,7 @@ fn main() {
 
         ui.draw(
             &mut target,
-            display.gl_window().get_hidpi_factor(),
+            display.gl_window().hidpi_factor() as f64,
             window_size,
             ft_av,
         );

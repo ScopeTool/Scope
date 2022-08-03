@@ -96,11 +96,11 @@ impl<'a> UI<'a> {
         &mut self,
         target: &mut Frame,
         hidpi_factor: f64,
-        window_size: glium::glutin::dpi::LogicalSize,
+        window_size: (u32, u32),
         frametime: f64,
     ) {
         self.hidpi_factor = hidpi_factor;
-        self.window_size = window_size.to_physical(hidpi_factor).into();
+        self.window_size = window_size; //.to_physical(hidpi_factor).into();
         self.draw_text(
             target,
             -0.98,
@@ -120,14 +120,10 @@ impl<'a> UI<'a> {
         let area = (view_start_x, view_start_y, view_end_x, view_end_y);
         self.working_area = area;
 
-        let mut sel = self.signal_manager.get_selection().clone();
+        let mut sel = self.signal_manager.get_selection();
         if sel.is_none() {
-            sel = if let Some((name, _)) = self.signal_manager.iter().next() {
-                Some(name.to_string())
-            } else {
-                None
-            };
-            self.signal_manager.set_selection(sel.clone());
+            let sel = self.signal_manager.iter().next().map(|(s, _)| s.to_owned());
+            self.signal_manager.set_selection(sel);
         }
 
         self.signal_manager.draw_signals(target, area);
@@ -337,8 +333,8 @@ impl<'a> UI<'a> {
                 if let Some(sig) = self.signal_manager.get_selected() {
                     self.last_mouse_pos = self.cursor.pos;
                     self.cursor.pos = (
-                        (2. * (position.x * self.hidpi_factor / (self.window_size.0 as f64)) - 1.),
-                        (1. - 2. * (position.y * self.hidpi_factor / (self.window_size.1 as f64))),
+                        (2. * (position.0 * self.hidpi_factor / (self.window_size.0 as f64)) - 1.),
+                        (1. - 2. * (position.1 * self.hidpi_factor / (self.window_size.1 as f64))),
                     );
                     self.cursor.signal = Some(sig.get_name().clone());
                     if self.lmb_pressed {
