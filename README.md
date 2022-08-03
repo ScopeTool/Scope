@@ -1,3 +1,8 @@
+## Status
+
+This was my first ever rust project I learned a lot but the whole thing needs to be gutted and built from the ground up.
+Dont really have time to firure out how to fix the unsoundess in it at the moment. Hopefully it compiles for you. It crashes for me 
+when built in release mode. But seems to work okay in debug where its still plenty fast.
 
 
 ## License
