@@ -379,9 +379,14 @@ where
             matrix: t
         };
 
+        let params = glium::DrawParameters {
+            line_width: Some(4.),
+            ..Default::default()
+        };
+
         self.vbos.draw(move |vb| {
             target
-                .draw(vb, &indices, &self.program, &uniforms, &Default::default())
+                .draw(vb, &indices, &self.program, &uniforms, &params)
                 .unwrap()
         });
     }
