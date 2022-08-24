@@ -12,7 +12,7 @@ use glium::{Display, Frame, Rect, Surface};
 
 use glimput::Editor;
 
-use glium::glutin::{KeyboardInput, VirtualKeyCode as VKC};
+use glium::glutin::event::{self, KeyboardInput, VirtualKeyCode as VKC};
 
 use drawstyles::Transform;
 use signal::{SignalHealth, SignalManager};
@@ -260,11 +260,11 @@ impl<'a> UI<'a> {
         }
     }
 
-    pub fn send_event(&mut self, input: KeyboardInput) {
+    pub fn send_event(&mut self, input: &KeyboardInput) {
         if let Some(k) = input.virtual_keycode {
-            if input.state == glium::glutin::ElementState::Pressed {
+            if input.state == glium::glutin::event::ElementState::Pressed {
                 match k {
-                    VKC::Tab if input.modifiers.shift && self.cmdline_completions.len() > 0 => {
+                    VKC::Tab if input.modifiers.shift() && self.cmdline_completions.len() > 0 => {
                         self.completion_idx =
                             (self.completion_idx + 1) % self.cmdline_completions.len();
                     }
@@ -297,18 +297,18 @@ impl<'a> UI<'a> {
         self.editor.send_event(input);
     }
 
-    pub fn send_mouse(&mut self, event: glium::glutin::WindowEvent) {
+    pub fn send_mouse(&mut self, event: &glium::glutin::event::WindowEvent) {
         match event {
-            glium::glutin::WindowEvent::MouseWheel {
+            glium::glutin::event::WindowEvent::MouseWheel {
                 delta,
                 phase: _,
                 modifiers: _,
                 ..
             } => {
                 if let Some(sig) = self.signal_manager.get_selected() {
-                    if let glium::glutin::MouseScrollDelta::LineDelta(_, y) = delta {
+                    if let glium::glutin::event::MouseScrollDelta::LineDelta(_, y) = delta {
                         sig.zoom_by(
-                            y as f64,
+                            *y as f64,
                             (
                                 self.working_area.2 - self.last_mouse_pos.0,
                                 (self.working_area.3
@@ -319,22 +319,22 @@ impl<'a> UI<'a> {
                     }
                 }
             }
-            glium::glutin::WindowEvent::MouseInput {
+            event::WindowEvent::MouseInput {
                 state,
                 button,
                 modifiers: _,
                 ..
             } => {
-                if button == glium::glutin::MouseButton::Left {
-                    self.lmb_pressed = state == glium::glutin::ElementState::Pressed;
+                if button == &event::MouseButton::Left {
+                    self.lmb_pressed = state == &event::ElementState::Pressed;
                 }
             }
-            glium::glutin::WindowEvent::CursorMoved { position, .. } => {
+            event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(sig) = self.signal_manager.get_selected() {
                     self.last_mouse_pos = self.cursor.pos;
                     self.cursor.pos = (
-                        (2. * (position.0 * self.hidpi_factor / (self.window_size.0 as f64)) - 1.),
-                        (1. - 2. * (position.1 * self.hidpi_factor / (self.window_size.1 as f64))),
+                        (2. * (position.x * self.hidpi_factor / (self.window_size.0 as f64)) - 1.),
+                        (1. - 2. * (position.y * self.hidpi_factor / (self.window_size.1 as f64))),
                     );
                     self.cursor.signal = Some(sig.get_name().clone());
                     if self.lmb_pressed {
@@ -558,7 +558,7 @@ impl<'a> UI<'a> {
     }
 
     fn resquare(&self) -> f32 {
-        (self.window_size.1 as f32 / self.window_size.0 as f32)
+        self.window_size.1 as f32 / self.window_size.0 as f32
     }
 
     fn debug_perf(&self, frametime: f64) {

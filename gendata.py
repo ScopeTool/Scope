@@ -134,4 +134,11 @@ if __name__ == '__main__':
 			log(s, 2)
 			sleep(randint(1,2))
 			sys.stdout.flush()
+	elif test == 7:
+		sigs = ["A", "B", "C", "D", "E"]
+		while True:
+			s = choice(sigs)
+			log(s, 1)
+			log(s, 2)
+			sys.stdout.flush()
 

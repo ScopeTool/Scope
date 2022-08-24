@@ -8,6 +8,8 @@ extern crate crossbeam_channel as channel;
 extern crate glimput;
 
 use channel::{Receiver, RecvTimeoutError, Sender};
+use glium::glutin::event_loop::ControlFlow;
+use glium::glutin::window::WindowBuilder;
 use glium::Surface;
 
 use std::f64::NAN;
@@ -69,12 +71,13 @@ fn main() {
 
     //Setup GUI
     use glium::glutin;
-    let mut events_loop = glutin::EventsLoop::new();
-    let window = glutin::WindowBuilder::new().with_title("Scope");
+    let events_loop = glutin::event_loop::EventLoop::new();
+    let window = WindowBuilder::new().with_title("Scope");
     let context = glutin::ContextBuilder::new()
         .with_multisampling(0)
         .with_vsync(false);
     let display = glium::Display::new(window, context, &events_loop).unwrap();
+    let display: &'static glium::Display = Box::leak(Box::new(display));
 
     //Spawn point processing thread
     let settings = ReaderSettings {};
@@ -83,44 +86,40 @@ fn main() {
         read_thread_main(&rx_stdin, &send_points, &settings);
     });
 
-    display
-        .gl_window()
-        .window()
-        .set_cursor_state(glutin::CursorState::Hide);
+    display.gl_window().window().set_cursor_visible(false);
 
     let mut ui = UI::new(&display);
 
     // display.get_free_video_memory()
 
-    let mut window_size = display.gl_window().get_inner_size().unwrap();
+    let mut window_size = display.get_framebuffer_dimensions();
 
     let refresh_rate = Duration::from_millis(30); //TODO: setting refresh rate to 15ms results in serious performance degradation
     let mut ft_av = 16000f64;
     //Main render loop
-    let mut closed = false;
-    while !closed {
+    util::start_loop(events_loop, move |events| {
+        use glium::glutin::event::Event;
+        use glium::glutin::event::WindowEvent;
         let frametime = Instant::now();
         //TODO: Only redraw when need user input or new data to draw
-        events_loop.poll_events(|ev| match ev {
-            glutin::Event::WindowEvent { event, .. } => match event {
-                glutin::WindowEvent::Closed => {
-                    closed = true;
-                }
-                glutin::WindowEvent::Resized { .. } => {
-                    window_size = display.gl_window().get_inner_size().unwrap()
-                }
-                glutin::WindowEvent::MouseWheel { .. }
-                | glutin::WindowEvent::MouseInput { .. }
-                | glutin::WindowEvent::CursorMoved { .. } => ui.send_mouse(event),
-                glutin::WindowEvent::KeyboardInput { input, .. } => ui.send_event(input),
-                glutin::WindowEvent::ReceivedCharacter(c) => ui.send_key(c),
+        let mut action = util::Action::Continue;
+        for ev in events {
+            match ev {
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => action = util::Action::Stop,
+                    WindowEvent::Resized { .. } => {
+                        window_size = display.get_framebuffer_dimensions();
+                    }
+                    WindowEvent::MouseWheel { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::CursorMoved { .. } => ui.send_mouse(event),
+                    WindowEvent::KeyboardInput { input, .. } => ui.send_event(input),
+                    WindowEvent::ReceivedCharacter(c) => ui.send_key(*c),
+                    _ => (),
+                },
                 _ => (),
-            },
-            _ => (),
-        });
-        if closed {
-            break;
-        } // glutin window closed event makes clear_color hang
+            }
+        }
 
         let mut target = display.draw();
 
@@ -128,7 +127,7 @@ fn main() {
 
         ui.draw(
             &mut target,
-            display.gl_window().hidpi_factor() as f64,
+            display.gl_window().window().scale_factor() as f64,
             window_size,
             ft_av,
         );
@@ -143,7 +142,8 @@ fn main() {
             &frametime,
             &refresh_rate,
         );
-    }
+        action
+    });
 }
 
 fn get_points(
@@ -326,4 +326,57 @@ fn handle_caps(
 fn passthrough(line: &String) {
     // Log data for later examination if breakpoint is reached etc
     if let Ok(_) = write!(io::stdout(), "{}", line) {}
+}
+
+// stolen from here cause glutin event loop is dumb: https://docs.rs/crate/glium/0.31.0/source/examples/support/mod.rs
+mod util {
+    use glium::glutin::event::{Event, StartCause};
+    use glium::glutin::event_loop::{ControlFlow, EventLoop};
+    use std::time::{Duration, Instant};
+
+    pub enum Action {
+        Stop,
+        Continue,
+    }
+    pub fn start_loop<F>(event_loop: EventLoop<()>, mut callback: F) -> !
+    where
+        F: 'static + FnMut(&Vec<Event<'_, ()>>) -> Action,
+    {
+        let mut events_buffer = Vec::new();
+        let mut next_frame_time = Instant::now();
+        event_loop.run(move |event, _, control_flow| {
+            let run_callback = match event.to_static() {
+                Some(Event::NewEvents(cause)) => match cause {
+                    StartCause::ResumeTimeReached { .. } | StartCause::Init => true,
+                    _ => false,
+                },
+                Some(event) => {
+                    events_buffer.push(event);
+                    false
+                }
+                None => {
+                    // Ignore this event.
+                    false
+                }
+            };
+
+            let action = if run_callback {
+                let action = callback(&events_buffer);
+                next_frame_time = Instant::now() + Duration::from_nanos(16666667);
+                // TODO: Add back the old accumulator loop in some way
+
+                events_buffer.clear();
+                action
+            } else {
+                Action::Continue
+            };
+
+            match action {
+                Action::Continue => {
+                    *control_flow = ControlFlow::WaitUntil(next_frame_time);
+                }
+                Action::Stop => *control_flow = ControlFlow::Exit,
+            }
+        })
+    }
 }

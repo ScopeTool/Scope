@@ -1,5 +1,5 @@
 extern crate glium;
-use glium::glutin::{KeyboardInput, VirtualKeyCode as VKC};
+use glium::glutin::event::{KeyboardInput, VirtualKeyCode as VKC};
 
 #[derive(Debug)]
 pub struct Editor {
@@ -29,9 +29,9 @@ impl Editor {
         };
     }
 
-    pub fn send_event(&mut self, input: KeyboardInput) {
+    pub fn send_event(&mut self, input: &KeyboardInput) {
         if let Some(k) = input.virtual_keycode {
-            if input.state == glium::glutin::ElementState::Pressed {
+            if input.state == glium::glutin::event::ElementState::Pressed {
                 match k {
                     VKC::Left => {
                         if self.cursor > 1 {

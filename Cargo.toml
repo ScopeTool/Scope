@@ -4,8 +4,9 @@ version = "0.1.0"
 authors = ["rademonster <sorenrade@gmail.com>"]
 
 [dependencies]
-glium = "0.20"
-glium_text_rusttype = "=0.3.1"
+glium = "0.31"
+# glium_text_rusttype = "0.3.3"
+glium_text_rusttype = { git = "https://github.com/not-fl3/glium_text_rusttype.git" , rev="7b5fd0fa9645904f1e12a07f9002a67363a534b3"}
 distance = "0.4"
 
 regex = "0.2.6"

@@ -70,7 +70,6 @@ impl VBOChunks {
     where
         T: Axes<T>,
     {
-        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         if (self.vbos.back().is_none()) || (self.current_vbo_size == VBO_SIZE) {
             match VertexBuffer::empty_dynamic(display, VBO_SIZE) {
                 Ok(mut vbo) => {
@@ -88,7 +87,6 @@ impl VBOChunks {
                 Err(e) => println!("{:?}", e), //TODO: update signal health indicator, if out of vram start using ram?
             }
         }
-        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         // println!("~.L@{:?}", self.vbos.len());
         // dbg!(self.current_vbo_size);
         if let Some(vbo) = self.vbos.back_mut() {
