@@ -19,7 +19,7 @@ pub fn parse(line: &str, run: bool, manager: &mut SignalManager) -> LineState {
                 drawstyle(line, run, &mut valid, &mut possible_completions, manager)
             }
             "s" | "select" => select(line, run, &mut valid, &mut possible_completions, manager),
-            "b" | "bind" => bind(line, run, &mut valid, &mut possible_completions, manager),
+            "b" | "bb" | "bind" => bind(line, run, &mut valid, &mut possible_completions, manager),
             "f" | "free" => free(line, run, &mut valid, &mut possible_completions, manager),
             &_ => {
                 if run {
@@ -110,7 +110,19 @@ fn drawstyle(
     }
 }
 
-fn bind(cmd: &str, run: bool, valid: &mut bool, pc: &mut Vec<String>, manager: &mut SignalManager) {
+fn bind(
+    raw_cmd: &str,
+    run: bool,
+    valid: &mut bool,
+    pc: &mut Vec<String>,
+    manager: &mut SignalManager,
+) {
+    let mut cmd = raw_cmd.to_owned();
+    // if were using the bb shortcut we want to replace it with bind xy then use the selectors
+    if cmd.starts_with("bb") {
+        cmd = String::from("bind xy ");
+        cmd.push_str(&raw_cmd["bb".len()..]);
+    }
     let bits = cmd.split_whitespace().collect::<Vec<&str>>();
     let mut mode = 0;
     if bits.len() > 1 {
