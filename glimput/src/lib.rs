@@ -16,12 +16,7 @@ impl Editor {
     }
     pub fn send_key(&mut self, c: char) {
         match c {
-            '\u{8}' => {
-                if self.cursor > 1 && self.cursor <= self.buffer.len() {
-                    self.buffer.remove(self.cursor - 1);
-                    self.cursor -= 1;
-                }
-            }
+            c if c.is_ascii_control() => (), // delete  ctrl+c, esc are handled elsewhere
             _ => {
                 self.buffer.insert(self.cursor, c);
                 self.cursor += 1
@@ -30,8 +25,9 @@ impl Editor {
     }
 
     pub fn send_event(&mut self, input: &KeyboardInput) {
+        use glium::glutin::event::ElementState;
         if let Some(k) = input.virtual_keycode {
-            if input.state == glium::glutin::event::ElementState::Pressed {
+            if input.state == ElementState::Pressed {
                 match k {
                     VKC::Left => {
                         if self.cursor > 1 {
@@ -43,6 +39,22 @@ impl Editor {
                             self.cursor += 1
                         }
                     }
+                    // doesnt work because we dont allow the cursor to be one beyond the end
+                    // VKC::Back => {
+                    //     if self.cursor > 2 && self.cursor <= self.buffer.len() {
+                    //         self.buffer.remove(self.cursor - 2);
+                    //         self.cursor -= 1;
+                    //     }
+                    // }
+                    VKC::Back | VKC::Delete => {
+                        if self.cursor > 1 && self.cursor <= self.buffer.len() {
+                            self.buffer.remove(self.cursor - 1);
+                            // if we deleted the end pos we need a valid cursor pos
+                            self.cursor = self.cursor.min(self.buffer.len());
+                        }
+                    }
+                    VKC::C if input.modifiers.ctrl() => self.clear(),
+                    VKC::Escape => self.clear(),
                     _ => (),
                 }
             }
